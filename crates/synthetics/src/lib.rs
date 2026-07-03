@@ -18,6 +18,7 @@ pub mod check;
 pub mod config;
 pub mod control_plane;
 pub mod metric;
+pub mod net_guard;
 pub mod scheduler;
 pub mod sharding;
 pub mod simd;
