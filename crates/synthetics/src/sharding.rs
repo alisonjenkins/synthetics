@@ -31,29 +31,34 @@ impl Worker {
     }
 }
 
-/// The worker that owns `key` among `candidates`, or `None` if there are no
-/// candidates. Ties (equal weight) break by worker id for determinism.
-pub fn owner<'a>(key: &str, candidates: &'a [Worker]) -> Option<&'a Worker> {
-    candidates.iter().max_by(|a, b| {
+/// The highest-weight worker for `key` among `candidates`, or `None` if the
+/// iterator is empty. Ties (equal weight) break by worker id for determinism.
+fn winner<'a>(key: &str, candidates: impl Iterator<Item = &'a Worker>) -> Option<&'a Worker> {
+    candidates.max_by(|a, b| {
         weight(key, &a.id)
             .cmp(&weight(key, &b.id))
             .then_with(|| a.id.cmp(&b.id))
     })
 }
 
+/// The worker that owns `key` among `candidates`, or `None` if there are no
+/// candidates. Ties (equal weight) break by worker id for determinism.
+pub fn owner<'a>(key: &str, candidates: &'a [Worker]) -> Option<&'a Worker> {
+    winner(key, candidates.iter())
+}
+
 /// Whether `me` owns `key`, considering only workers whose region is in
 /// `locations` (an empty `locations` means any region — a check with no location
 /// constraint runs anywhere). Returns `false` if `me` is not a candidate.
+///
+/// This is called once per check on every reload (potentially tens of thousands
+/// of times per poll), so it borrows the fleet and filters lazily — no
+/// per-check allocation.
 pub fn owns(me: &Worker, key: &str, workers: &[Worker], locations: &[String]) -> bool {
-    let candidates: Vec<Worker> = workers
+    let candidates = workers
         .iter()
-        .filter(|w| locations.is_empty() || locations.contains(&w.region))
-        .cloned()
-        .collect();
-    match owner(key, &candidates) {
-        Some(o) => o.id == me.id,
-        None => false,
-    }
+        .filter(|w| locations.is_empty() || locations.contains(&w.region));
+    winner(key, candidates).is_some_and(|o| o.id == me.id)
 }
 
 /// Rendezvous weight of `key` for `worker_id`. Fixed hash so all workers agree.
