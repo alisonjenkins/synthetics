@@ -13,6 +13,7 @@
 pub const NAME: &str = "synthetics";
 
 pub mod config;
+pub mod metric;
 
 #[cfg(test)]
 mod tests {

@@ -119,7 +119,7 @@ check. Replace pricey Datadog synthetics.
 |----|----|------|-------|
 | T1 | x | scaffold cargo workspace, CI, test harness, clippy + cargo-deny gates | V7,V12,V23 |
 | T2 | x | config model + parse (endpoints, intervals, params) | I.config,V1,V11 |
-| T3 | . | `MetricSink` trait + mock/no-op sink for tests | I.sink,V2,V9 |
+| T3 | x | `MetricSink` trait + mock/no-op sink for tests | I.sink,V2,V9 |
 | T4 | . | Datadog agent sink (DogStatsD UDP/UDS) | I.ddagent,V2 |
 | T5 | . | HTTP check executor + per-fn error enum + full DD-parity timings + timeouts | I.http,V1,V9,V10,V17,V19 |
 | T6 | . | TCP check executor + per-fn error enum + connect timing + timeout | I.tcp,V1,V9,V10,V17,V19 |
