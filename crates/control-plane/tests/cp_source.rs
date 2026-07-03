@@ -120,6 +120,37 @@ async fn heartbeat_registers_worker() {
 }
 
 #[tokio::test]
+async fn heartbeat_times_out_against_a_hung_server() {
+    use std::time::Instant;
+    // A listener that accepts connections and holds them open forever without
+    // ever writing a response — the classic slow/dead control plane. Without a
+    // request timeout the client would wait indefinitely and stall the worker's
+    // heartbeat loop (and, on shutdown, block the process).
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        loop {
+            if let Ok((sock, _)) = listener.accept().await {
+                held.push(sock); // keep the socket open; never respond
+            }
+        }
+    });
+
+    let source = ControlPlaneConfigSource::new(format!("http://{addr}"), "w1", "w1", "eu-west")
+        .with_request_timeout(Duration::from_millis(300));
+
+    let start = Instant::now();
+    let res = source.heartbeat().await;
+    assert!(res.is_err(), "hung server must surface as an error, not a hang");
+    assert!(
+        start.elapsed() < Duration::from_secs(5),
+        "heartbeat must give up on the configured timeout, not hang: took {:?}",
+        start.elapsed()
+    );
+}
+
+#[tokio::test]
 async fn serves_cached_config_when_cp_is_down() {
     let (base, _store, shutdown) = spawn_cp().await;
     let source = ControlPlaneConfigSource::new(base, "w1", "w1", "eu-west");

@@ -10,6 +10,7 @@
 //! with the control plane (T20).
 
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -39,6 +40,23 @@ struct FleetWorker {
     region: String,
 }
 
+/// Default per-request timeout for calls to the control plane. Bounds how long a
+/// slow or dead control plane can stall a heartbeat or reload; kept well under
+/// the worker's default poll/heartbeat intervals so a hung request cannot pile up
+/// across cycles or block graceful shutdown (RELIABILITY).
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Build an HTTP client that gives up on a request (or connect) after `timeout`
+/// rather than waiting forever. Falls back to an untimed default client only if
+/// the builder somehow rejects the configuration (never expected).
+fn build_client(timeout: Duration) -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .connect_timeout(timeout)
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 impl ControlPlaneConfigSource {
     /// Create a source pointing at `base_url` (e.g. `http://cp:8080`), presenting
     /// `token` as this worker's credential, identified by `worker_id`/`region`.
@@ -49,13 +67,21 @@ impl ControlPlaneConfigSource {
         region: impl Into<String>,
     ) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: build_client(DEFAULT_REQUEST_TIMEOUT),
             base_url: base_url.into(),
             token: token.into(),
             me: Worker::new(worker_id, region),
             max_concurrency: DEFAULT_MAX_CONCURRENCY,
             cache: Mutex::new(None),
         }
+    }
+
+    /// Override the per-request timeout (default [`DEFAULT_REQUEST_TIMEOUT`]).
+    /// Builder-style so existing call sites are unaffected.
+    #[must_use]
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.client = build_client(timeout);
+        self
     }
 
     /// Register/refresh this worker's heartbeat with the control plane (T20).
