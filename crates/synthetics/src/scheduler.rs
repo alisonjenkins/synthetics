@@ -147,6 +147,13 @@ fn catch_up(mut next: Instant, now: Instant, interval: Duration) -> (Instant, u6
     (next, skipped)
 }
 
+/// Whether an overrun (skipped ticks) should be warned about. The first fire of
+/// a loop aligns to the (possibly long-past) epoch, so its catch-up jump is not a
+/// real overrun — only warn once the endpoint has actually started firing.
+fn should_warn_overrun(skipped: u64, first_fire: bool) -> bool {
+    skipped > 0 && !first_fire
+}
+
 async fn endpoint_loop<M: MetricSink + 'static>(
     endpoint: Arc<EndpointConfig>,
     sink: Arc<M>,
@@ -159,6 +166,9 @@ async fn endpoint_loop<M: MetricSink + 'static>(
     // Fire times are aligned to the epoch so per-check latency does not
     // accumulate into schedule drift (V5).
     let mut next = epoch + interval;
+    // The first fire aligns to the epoch (possibly far in the past for a
+    // reconfigure-added endpoint); that jump is not an overrun (F2).
+    let mut first_fire = true;
 
     loop {
         // Skip any missed slots (overrun) so a slow endpoint catches up to the
@@ -167,7 +177,7 @@ async fn endpoint_loop<M: MetricSink + 'static>(
         let now = Instant::now();
         let skipped;
         (next, skipped) = catch_up(next, now, interval);
-        if skipped > 0 {
+        if should_warn_overrun(skipped, first_fire) {
             tracing::warn!(
                 endpoint = %endpoint.id,
                 skipped,
@@ -184,6 +194,8 @@ async fn endpoint_loop<M: MetricSink + 'static>(
             return;
         }
         next += interval;
+        // We have now fired at least once; subsequent catch-ups are real overruns.
+        first_fire = false;
 
         // Bounded concurrency: wait for a permit (or shutdown). One endpoint
         // holds at most one permit at a time — the loop awaits the check before
@@ -261,6 +273,20 @@ fn empty_detail(target: &Target) -> CheckDetail {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
+
+    #[test]
+    fn no_overrun_warning_on_the_first_fire() {
+        // A freshly started (or reconfigure-added) endpoint aligns its first fire
+        // to the scheduler epoch, which may be well in the past — that catch-up
+        // jump is not an overrun of a running check and must not warn.
+        assert!(!should_warn_overrun(5, true));
+    }
+
+    #[test]
+    fn warns_on_a_genuine_overrun_after_the_first_fire() {
+        assert!(should_warn_overrun(2, false));
+        assert!(!should_warn_overrun(0, false));
+    }
 
     #[test]
     fn catch_up_reports_no_skips_when_keeping_up() {
