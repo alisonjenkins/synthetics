@@ -1,0 +1,189 @@
+//! Control-plane config source + heartbeat client (T20, T21).
+//!
+//! [`ControlPlaneConfigSource`] is the fleet implementation of
+//! [`ConfigSource`]: it pulls the resolved checks
+//! and the live worker-set from the control plane's worker API, keeps only the
+//! checks this worker owns by rendezvous hashing (V26, V33), and maps them to
+//! the flat runtime [`EndpointConfig`]. It caches the last good result and, if
+//! the control plane is unreachable, keeps running the cached config rather than
+//! stopping (V29). [`ControlPlaneConfigSource::heartbeat`] registers this worker
+//! with the control plane (T20).
+
+use std::sync::Mutex;
+
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use url::Url;
+
+use crate::config::{
+    Config, EndpointConfig, HttpTarget, Target, TcpTarget, DEFAULT_MAX_CONCURRENCY,
+};
+use crate::sharding::{self, Worker};
+use crate::source::{ConfigSource, ConfigSourceError};
+use crate::wire::{ChecksResponse, HeartbeatRequest, ResolvedCheck, TargetSpec};
+
+/// A [`ConfigSource`] backed by the control plane's worker API.
+pub struct ControlPlaneConfigSource {
+    client: reqwest::Client,
+    base_url: String,
+    token: String,
+    me: Worker,
+    max_concurrency: usize,
+    cache: Mutex<Option<Config>>,
+}
+
+/// Minimal view of a worker from the control plane's `/workers` response.
+#[derive(Debug, Deserialize)]
+struct FleetWorker {
+    id: String,
+    region: String,
+}
+
+impl ControlPlaneConfigSource {
+    /// Create a source pointing at `base_url` (e.g. `http://cp:8080`), presenting
+    /// `token` as this worker's credential, identified by `worker_id`/`region`.
+    pub fn new(
+        base_url: impl Into<String>,
+        token: impl Into<String>,
+        worker_id: impl Into<String>,
+        region: impl Into<String>,
+    ) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            base_url: base_url.into(),
+            token: token.into(),
+            me: Worker::new(worker_id, region),
+            max_concurrency: DEFAULT_MAX_CONCURRENCY,
+            cache: Mutex::new(None),
+        }
+    }
+
+    /// Register/refresh this worker's heartbeat with the control plane (T20).
+    pub async fn heartbeat(&self) -> Result<(), ConfigSourceError> {
+        let body = HeartbeatRequest {
+            id: self.me.id.clone(),
+            region: self.me.region.clone(),
+        };
+        self.client
+            .post(format!("{}/workers/heartbeat", self.base_url))
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|e| ConfigSourceError::ControlPlane(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T, ConfigSourceError> {
+        self.client
+            .get(format!("{}{path}", self.base_url))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|e| ConfigSourceError::ControlPlane(e.to_string()))?
+            .json::<T>()
+            .await
+            .map_err(|e| ConfigSourceError::ControlPlane(e.to_string()))
+    }
+
+    async fn fetch(&self) -> Result<Config, ConfigSourceError> {
+        let checks: ChecksResponse = self.get_json("/checks").await?;
+        let fleet_raw: Vec<FleetWorker> = self.get_json("/workers").await?;
+
+        let mut fleet: Vec<Worker> = fleet_raw
+            .into_iter()
+            .map(|w| Worker::new(w.id, w.region))
+            .collect();
+        // Make sure we consider ourselves a candidate even before our own
+        // heartbeat has propagated to the worker-set we just fetched.
+        if !fleet.iter().any(|w| w.id == self.me.id) {
+            fleet.push(self.me.clone());
+        }
+
+        // No per-check locations yet; region filtering is a no-op until they are
+        // carried on the wire.
+        let no_locations: Vec<String> = Vec::new();
+        let endpoints: Vec<EndpointConfig> = checks
+            .checks
+            .into_iter()
+            .filter(|c| sharding::owns(&self.me, &c.id, &fleet, &no_locations))
+            .filter_map(to_endpoint)
+            .collect();
+
+        Ok(Config {
+            max_concurrency: self.max_concurrency,
+            endpoints,
+        })
+    }
+
+    fn cached(&self) -> Option<Config> {
+        match self.cache.lock() {
+            Ok(g) => g.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
+    }
+
+    fn store_cache(&self, config: Config) {
+        match self.cache.lock() {
+            Ok(mut g) => *g = Some(config),
+            Err(poisoned) => *poisoned.into_inner() = Some(config),
+        }
+    }
+}
+
+impl ConfigSource for ControlPlaneConfigSource {
+    async fn load(&self) -> Result<Config, ConfigSourceError> {
+        match self.fetch().await {
+            Ok(config) => {
+                self.store_cache(config.clone());
+                Ok(config)
+            }
+            Err(error) => match self.cached() {
+                // V29: keep running the last-known config on control-plane outage.
+                Some(config) => {
+                    tracing::warn!(%error, "control plane unreachable; using cached config");
+                    Ok(config)
+                }
+                None => Err(error),
+            },
+        }
+    }
+}
+
+/// Map a resolved wire check to the flat runtime [`EndpointConfig`]. Returns
+/// `None` for a malformed target (e.g. an unparseable URL) so one bad check does
+/// not fail the whole load.
+fn to_endpoint(check: ResolvedCheck) -> Option<EndpointConfig> {
+    let target = match check.target {
+        TargetSpec::Http(http) => {
+            let url = Url::parse(&http.url).ok()?;
+            let mut headers: Vec<(String, String)> = http.headers.into_iter().collect();
+            headers.sort();
+            let method = http
+                .method
+                .map(|m| m.to_uppercase())
+                .unwrap_or_else(|| "GET".to_string());
+            Target::Http(HttpTarget {
+                url,
+                method,
+                headers,
+                body: http.body,
+                allow_insecure: http.allow_insecure,
+            })
+        }
+        TargetSpec::Tcp(tcp) => Target::Tcp(TcpTarget {
+            host: tcp.host,
+            port: tcp.port,
+        }),
+    };
+    Some(EndpointConfig {
+        id: check.id,
+        interval: check.interval,
+        timeout: check.timeout,
+        tags: check.tags,
+        target,
+        assertions: check.assertions,
+    })
+}

@@ -23,6 +23,7 @@ humantime-serde = "1.1.1"
 hyper = { version = "1.10.1", features = ["client", "http1"] }
 hyper-util = { version = "0.1.20", features = ["tokio"] }
 regex = "1.12.4"
+reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
 serde = { version = "1.0.228", features = ["derive"] }
 sha2 = "0.11.0"
 thiserror = "2.0.18"

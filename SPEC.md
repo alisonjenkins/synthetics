@@ -228,8 +228,8 @@ check. Replace pricey Datadog synthetics.
 | T17 | x | endpoint→CheckReport orchestrator (match Target, run executor, apply assertions, build report; no trait per V36) | V9,V18,V35,V36 |
 | T18 | ~ | `ConfigSource` trait + FileConfigSource (wraps T2) + scheduler/reload consume it | I.configsource,V24,V35 |
 | T19 | x | rendezvous-hash ownership + worker identity + region/location match | V26,V27,V32,V33 |
-| T20 | . | worker heartbeat client + membership consumption | I.membership,V26 |
-| T21 | . | ControlPlaneConfigSource: CP client + change-feed + local cache + outage survival | I.cp,I.configsource,V28,V29,V24 |
+| T20 | x | worker heartbeat client + membership consumption | I.membership,V26 |
+| T21 | x | ControlPlaneConfigSource: CP client + change-feed + local cache + outage survival | I.cp,I.configsource,V28,V29,V24 |
 | T22 | x | `ConfigStore` trait + in-memory impl + Postgres impl + migrations | I.store,V30,V34,V35 |
 | T23 | x | CP inheritance resolver (hierarchy → flat resolved checks) | I.store,V25 |
 | T24 | x | CP writer API (OIDC, per-product scope, hierarchy CRUD) + write validation | I.cp,I.auth,V31,V32,V37 |

@@ -18,6 +18,9 @@ pub enum ConfigSourceError {
     /// Loading from a file failed (read / parse / validate).
     #[error(transparent)]
     File(#[from] ConfigLoadError),
+    /// A control-plane request failed (network, status, or decode).
+    #[error("control plane request failed: {0}")]
+    ControlPlane(String),
 }
 
 /// A source of validated worker configuration.
