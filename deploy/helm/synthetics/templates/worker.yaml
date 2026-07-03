@@ -28,8 +28,6 @@ spec:
             - "http://{{ include "synthetics.cpService" . }}:8080"
             - --region
             - {{ .Values.worker.region | quote }}
-            - --cp-token
-            - {{ .Values.worker.cpToken | quote }}
             - --dogstatsd
             - {{ include "synthetics.dogstatsdTarget" . | quote }}
             - --log-format
@@ -50,5 +48,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            # Credential presented to the control plane, from a Secret (not a CLI
+            # arg — keeps it out of the pod spec / process arg list).
+            - name: CP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "synthetics.fullname" . }}-tokens
+                  key: worker-cp-token
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}

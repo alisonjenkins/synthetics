@@ -29,16 +29,19 @@ spec:
             - {{ .Values.controlPlane.listen | quote }}
             - --log-format
             - {{ .Values.controlPlane.logFormat }}
-            {{- range .Values.controlPlane.writerTokens }}
-            - --writer-token
-            - {{ printf "%s:%s" .token .product | quote }}
-            {{- end }}
           env:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "synthetics.dbCluster" . }}-app
                   key: uri
+            # Writer credentials from a Secret, not a CLI arg (not visible in the
+            # pod spec / process arg list).
+            - name: WRITER_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "synthetics.fullname" . }}-tokens
+                  key: writer-tokens
           ports:
             - name: http
               containerPort: 8080

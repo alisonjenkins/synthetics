@@ -27,8 +27,15 @@ struct Args {
     #[arg(long, env = "DATABASE_URL")]
     database_url: String,
 
-    /// Writer credential in the form `token:product` (repeatable).
-    #[arg(long = "writer-token", value_name = "TOKEN:PRODUCT")]
+    /// Writer credential in the form `token:product` (repeatable). Prefer the
+    /// `WRITER_TOKENS` env var (comma-separated, sourced from a Secret) over the
+    /// CLI flag so the credentials are not visible in the process arg list.
+    #[arg(
+        long = "writer-token",
+        value_name = "TOKEN:PRODUCT",
+        env = "WRITER_TOKENS",
+        value_delimiter = ','
+    )]
     writer_tokens: Vec<String>,
 
     /// Log output format.
