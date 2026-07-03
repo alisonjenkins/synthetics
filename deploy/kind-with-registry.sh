@@ -15,6 +15,10 @@ if [ "$(docker inspect -f '{{.State.Running}}' "${REG_NAME}" 2>/dev/null || true
 fi
 
 # 2. Create the KIND cluster with the registry mirror configured.
+#    Single node: the control plane, control plane, workers, Postgres, and
+#    CoreDNS all sit on one node, so there is no cross-node pod networking to
+#    depend on (some hosts' CNI setups drop cross-node traffic). The worker
+#    fleet still runs as N pods on this node, exercising rendezvous sharding.
 cat <<EOF | kind create cluster --name "${CLUSTER_NAME}" --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -24,9 +28,10 @@ containerdConfigPatches:
     config_path = "/etc/containerd/certs.d"
 nodes:
 - role: control-plane
-- role: worker
-- role: worker
 EOF
+
+# Allow workloads to schedule on the single control-plane node.
+kubectl taint nodes --all node-role.kubernetes.io/control-plane- 2>/dev/null || true
 
 # 3. Add the registry config dir to each node.
 REGISTRY_DIR="/etc/containerd/certs.d/localhost:${REG_PORT}"
