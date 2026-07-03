@@ -245,9 +245,9 @@ check. Replace pricey Datadog synthetics.
 | T27 | x | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
 | T30 | x | control-plane server binary (PgStore + writer/worker routers + serve) | I.cp,I.store,I.auth |
 | T31 | x | worker daemon control-plane mode (ControlPlaneConfigSource + heartbeat + poll reload) | I.configsource,I.membership,V28 |
-| T28 | . | Helm chart (worker + CP + CNPG) + KIND cluster + local registry | I.cp,I.store |
-| T32 | . | nix flake: devshell + packages (both binaries) + nix-built containers | (build/deploy) |
-| T33 | . | just + Tilt stand up local stack (kind+registry+cnpg+images+helm) | (build/deploy) |
+| T28 | x | Helm chart (worker + CP + CNPG) + KIND cluster + local registry | I.cp,I.store |
+| T32 | x | nix flake: devshell + packages (both binaries) + nix-built containers | (build/deploy) |
+| T33 | x | just + Tilt stand up local stack (kind+registry+cnpg+images+helm) | (build/deploy) |
 | T29 | . | mock Datadog (DogStatsD receiver + viewer) for local/test | I.ddagent,V39 |
 
 ## §B — bugs

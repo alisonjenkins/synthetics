@@ -1,0 +1,43 @@
+image:
+  registry: localhost:5001
+  pullPolicy: IfNotPresent
+  worker:
+    repository: synthetics-worker
+    tag: latest
+  controlPlane:
+    repository: synthetics-control-plane
+    tag: latest
+
+controlPlane:
+  replicas: 1
+  listen: "0.0.0.0:8080"
+  logFormat: json
+  # Writer credentials (token → product). For local/dev only; production uses OIDC.
+  writerTokens:
+    - token: dev-token
+      product: web
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+worker:
+  replicas: 3
+  region: local
+  logFormat: json
+  pollSecs: 15
+  heartbeatSecs: 10
+  # Credential presented to the control plane (AcceptWorkerAuth: any non-empty).
+  cpToken: worker-fleet
+  # Where to send DogStatsD. Locally this is the mock Datadog receiver;
+  # an unreachable target is dropped gracefully (V13).
+  dogstatsd: "synthetics-mock-datadog:8125"
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: "1", memory: 256Mi }
+
+postgres:
+  # CloudNativePG-provisioned Postgres (operator installed separately).
+  instances: 1
+  storageSize: 1Gi
+  database: synthetics
+  owner: synthetics

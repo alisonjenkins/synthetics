@@ -31,9 +31,9 @@ struct Args {
     #[arg(long, default_value = "synthetics.toml")]
     config: PathBuf,
 
-    /// Address of the local Datadog agent's DogStatsD UDP socket.
+    /// DogStatsD target as `host:port` (resolved at startup; a name is fine).
     #[arg(long, default_value = "127.0.0.1:8125")]
-    dogstatsd: SocketAddr,
+    dogstatsd: String,
 
     /// Control-plane base URL. When set, run in control-plane mode.
     #[arg(long)]
@@ -94,7 +94,8 @@ async fn main() -> ExitCode {
 }
 
 async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
-    let sink = Arc::new(DogStatsdSink::udp(args.dogstatsd).await?);
+    let dogstatsd = resolve_dogstatsd(&args.dogstatsd).await;
+    let sink = Arc::new(DogStatsdSink::udp(dogstatsd).await?);
 
     let (reload_tx, reload_rx) = mpsc::unbounded_channel();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -155,6 +156,26 @@ async fn serve<S: ConfigSource + 'static>(
     worker.run(reload_rx, shutdown_rx).await;
     tracing::info!("synthetics daemon stopped");
     Ok(())
+}
+
+/// Resolve the DogStatsD `host:port` target to an address. If it does not
+/// resolve (e.g. the local mock/agent is not up yet), fall back to a loopback
+/// discard address so the sink still exists and drops gracefully (V13).
+async fn resolve_dogstatsd(target: &str) -> SocketAddr {
+    match tokio::net::lookup_host(target)
+        .await
+        .ok()
+        .and_then(|mut a| a.next())
+    {
+        Some(addr) => addr,
+        None => {
+            tracing::warn!(
+                target,
+                "could not resolve DogStatsD target; metrics will be dropped"
+            );
+            SocketAddr::from(([127, 0, 0, 1], 9))
+        }
+    }
 }
 
 fn spawn_heartbeat(source: Arc<ControlPlaneConfigSource>, period: Duration) {

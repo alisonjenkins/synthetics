@@ -1,0 +1,6 @@
+apiVersion: v2
+name: synthetics
+description: Self-hosted synthetic monitoring — worker fleet + control plane, backed by CloudNativePG.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

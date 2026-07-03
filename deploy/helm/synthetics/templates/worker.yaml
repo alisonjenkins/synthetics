@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "synthetics.fullname" . }}-worker
+  labels:
+    {{- include "synthetics.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "synthetics.labels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.image.registry }}/{{ .Values.image.worker.repository }}:{{ .Values.image.worker.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --control-plane
+            - "http://{{ include "synthetics.cpService" . }}:8080"
+            - --region
+            - {{ .Values.worker.region | quote }}
+            - --cp-token
+            - {{ .Values.worker.cpToken | quote }}
+            - --dogstatsd
+            - {{ .Values.worker.dogstatsd | quote }}
+            - --log-format
+            - {{ .Values.worker.logFormat }}
+            - --poll-secs
+            - {{ .Values.worker.pollSecs | quote }}
+            - --heartbeat-secs
+            - {{ .Values.worker.heartbeatSecs | quote }}
+          env:
+            # Worker id defaults to $HOSTNAME (the pod name) — unique per pod,
+            # which is all rendezvous hashing needs.
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
