@@ -135,6 +135,18 @@ impl<M: MetricSink + 'static> Scheduler<M> {
     }
 }
 
+/// Advance `next` in whole `interval` steps until it is strictly after `now`,
+/// returning the new fire time and how many scheduled ticks were skipped (0 when
+/// the endpoint is keeping up). Extracted so the overrun logic is unit-testable.
+fn catch_up(mut next: Instant, now: Instant, interval: Duration) -> (Instant, u64) {
+    let mut skipped = 0;
+    while next <= now {
+        next += interval;
+        skipped += 1;
+    }
+    (next, skipped)
+}
+
 async fn endpoint_loop<M: MetricSink + 'static>(
     endpoint: Arc<EndpointConfig>,
     sink: Arc<M>,
@@ -150,10 +162,18 @@ async fn endpoint_loop<M: MetricSink + 'static>(
 
     loop {
         // Skip any missed slots (overrun) so a slow endpoint catches up to the
-        // next future boundary rather than firing a burst.
+        // next future boundary rather than firing a burst. Surface the drop as a
+        // signal — a silently thinned schedule otherwise looks healthy (#11).
         let now = Instant::now();
-        while next <= now {
-            next += interval;
+        let skipped;
+        (next, skipped) = catch_up(next, now, interval);
+        if skipped > 0 {
+            tracing::warn!(
+                endpoint = %endpoint.id,
+                skipped,
+                interval_ms = interval.as_millis() as u64,
+                "check overran its interval; skipped scheduled ticks",
+            );
         }
 
         tokio::select! {
@@ -241,6 +261,27 @@ fn empty_detail(target: &Target) -> CheckDetail {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
+
+    #[test]
+    fn catch_up_reports_no_skips_when_keeping_up() {
+        let base = Instant::now();
+        let interval = Duration::from_secs(10);
+        // Next fire is still in the future relative to now.
+        let (next, skipped) = catch_up(base + interval, base, interval);
+        assert_eq!(skipped, 0);
+        assert_eq!(next, base + interval);
+    }
+
+    #[test]
+    fn catch_up_counts_skipped_ticks_on_overrun() {
+        let base = Instant::now();
+        let interval = Duration::from_secs(10);
+        // The check ran long: now is 25s past the target, so the 10s and 20s
+        // slots are missed and we resume at the 30s slot.
+        let (next, skipped) = catch_up(base, base + Duration::from_secs(25), interval);
+        assert_eq!(skipped, 3);
+        assert_eq!(next, base + Duration::from_secs(30));
+    }
 
     #[tokio::test]
     async fn isolate_converts_panic_to_failure_report() {
