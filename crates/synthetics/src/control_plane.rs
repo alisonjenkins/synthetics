@@ -263,7 +263,14 @@ impl ControlPlaneConfigSource {
     fn load_from_disk(&self) -> Option<Config> {
         let path = self.cache_path.as_ref()?;
         let bytes = std::fs::read(path).ok()?;
-        let state: PersistedState = serde_json::from_slice(&bytes).ok()?;
+        let mut state: PersistedState = serde_json::from_slice(&bytes).ok()?;
+        // Ensure we are a candidate for ownership even if the persisted fleet
+        // predates this worker (e.g. a fresh pod reading a shared cache) — mirror
+        // the self-insertion the live fetch does, so a cold start never ends up
+        // owning nothing (F3).
+        if !state.fleet.iter().any(|w| w.id == self.me.id) {
+            state.fleet.push(self.me.clone());
+        }
         let config = self.build_config(&state.raw_checks, &state.fleet);
         // Prime the in-memory cache so subsequent polls have a baseline.
         self.store_state(state.version, state.raw_checks, state.fleet, config.clone());

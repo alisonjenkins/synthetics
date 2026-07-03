@@ -160,6 +160,50 @@ async fn fresh_worker_starts_from_disk_cache_during_cp_outage() {
 }
 
 #[tokio::test]
+async fn cold_start_owns_checks_even_when_absent_from_persisted_fleet() {
+    use synthetics::wire::{ResolvedCheck, TargetSpec, TcpSpec};
+
+    // A persisted cache whose fleet does not contain this worker (here, empty).
+    // On cold start the worker must add itself to the fleet before computing
+    // ownership, or it would own nothing and start with zero checks (F3).
+    let check = ResolvedCheck {
+        id: "web/prod/x".into(),
+        interval: Duration::from_secs(30),
+        timeout: Duration::from_secs(5),
+        tags: vec![],
+        target: TargetSpec::Tcp(TcpSpec {
+            host: "h".into(),
+            port: 1,
+        }),
+        assertions: vec![],
+        allow_internal: false,
+        retries: 0,
+        retry_backoff: Duration::ZERO,
+    };
+    let persisted = serde_json::json!({
+        "version": 7,
+        "raw_checks": [check],
+        "fleet": []
+    });
+    let cache = std::env::temp_dir().join("synthetics-coldstart-f3.json");
+    std::fs::write(&cache, serde_json::to_vec(&persisted).unwrap()).unwrap();
+
+    // CP is unreachable (port 1); a short timeout keeps the test fast.
+    let source = ControlPlaneConfigSource::new("http://127.0.0.1:1", "newbie", "newbie", "r")
+        .with_cache_path(cache.clone())
+        .with_request_timeout(Duration::from_millis(200));
+
+    let cfg = source.load().await.expect("cold start from disk");
+    assert_eq!(
+        cfg.endpoints.len(),
+        1,
+        "worker must own its share after adding itself to the persisted fleet"
+    );
+
+    let _ = std::fs::remove_file(&cache);
+}
+
+#[tokio::test]
 async fn skips_checks_pull_when_version_is_unchanged() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
