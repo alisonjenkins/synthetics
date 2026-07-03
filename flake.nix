@@ -50,6 +50,13 @@
           meta.mainProgram = "synthetics-cp";
         });
 
+        mock-datadog = craneLib.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
+          pname = "mock-datadog";
+          cargoExtraArgs = "-p mock-datadog --bin mock-datadog";
+          meta.mainProgram = "mock-datadog";
+        });
+
         # Nix-built OCI images. The layered image includes each binary's full
         # runtime closure automatically; we add CA certs for outbound TLS.
         mkImage = { name, pkg, entry }:
@@ -73,15 +80,21 @@
           pkg = control-plane;
           entry = "synthetics-cp";
         };
+        mock-datadog-image = mkImage {
+          name = "synthetics-mock-datadog";
+          pkg = mock-datadog;
+          entry = "mock-datadog";
+        };
       in
       {
         packages = {
-          inherit worker control-plane worker-image control-plane-image;
+          inherit worker control-plane mock-datadog
+            worker-image control-plane-image mock-datadog-image;
           default = worker;
         };
 
-        # `nix flake check` builds both binaries.
-        checks = { inherit worker control-plane; };
+        # `nix flake check` builds all binaries.
+        checks = { inherit worker control-plane mock-datadog; };
 
         devShells.default = pkgs.mkShell {
           inputsFrom = [ worker ];

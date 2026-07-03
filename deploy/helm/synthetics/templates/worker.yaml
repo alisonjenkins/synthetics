@@ -29,7 +29,7 @@ spec:
             - --cp-token
             - {{ .Values.worker.cpToken | quote }}
             - --dogstatsd
-            - {{ .Values.worker.dogstatsd | quote }}
+            - {{ include "synthetics.dogstatsdTarget" . | quote }}
             - --log-format
             - {{ .Values.worker.logFormat }}
             - --poll-secs

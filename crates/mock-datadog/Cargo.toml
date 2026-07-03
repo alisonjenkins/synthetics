@@ -1,0 +1,31 @@
+[package]
+name = "mock-datadog"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Local mock Datadog: a DogStatsD receiver + web viewer for testing (never sends to real Datadog)."
+
+[lib]
+name = "mock_datadog"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mock-datadog"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+clap = { version = "4.6.1", features = ["derive", "env"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+tokio = { version = "1.52.3", features = ["net", "rt-multi-thread", "macros", "sync", "signal"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
+
+[dev-dependencies]
+tokio = { version = "1.52.3", features = ["net", "rt", "macros", "time"] }
+
+[lints]
+workspace = true

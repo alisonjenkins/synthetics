@@ -248,7 +248,7 @@ check. Replace pricey Datadog synthetics.
 | T28 | x | Helm chart (worker + CP + CNPG) + KIND cluster + local registry | I.cp,I.store |
 | T32 | x | nix flake: devshell + packages (both binaries) + nix-built containers | (build/deploy) |
 | T33 | x | just + Tilt stand up local stack (kind+registry+cnpg+images+helm) | (build/deploy) |
-| T29 | . | mock Datadog (DogStatsD receiver + viewer) for local/test | I.ddagent,V39 |
+| T29 | x | mock Datadog (DogStatsD receiver + viewer) for local/test | I.ddagent,V39 |
 
 ## §B — bugs
 

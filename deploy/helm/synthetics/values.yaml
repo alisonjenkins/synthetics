@@ -7,6 +7,9 @@ image:
   controlPlane:
     repository: synthetics-control-plane
     tag: latest
+  mockDatadog:
+    repository: synthetics-mock-datadog
+    tag: latest
 
 controlPlane:
   replicas: 1
@@ -28,12 +31,21 @@ worker:
   heartbeatSecs: 10
   # Credential presented to the control plane (AcceptWorkerAuth: any non-empty).
   cpToken: worker-fleet
-  # Where to send DogStatsD. Locally this is the mock Datadog receiver;
-  # an unreachable target is dropped gracefully (V13).
-  dogstatsd: "synthetics-mock-datadog:8125"
+  # DogStatsD target used when mockDatadog.enabled is false. When the mock is
+  # enabled the worker points at it automatically. An unreachable target is
+  # dropped gracefully (V13).
+  dogstatsd: "127.0.0.1:8125"
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { cpu: "1", memory: 256Mi }
+
+mockDatadog:
+  # Local DogStatsD receiver + web viewer. Never sends to real Datadog (V39).
+  enabled: true
+  replicas: 1
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
 
 postgres:
   # CloudNativePG-provisioned Postgres (operator installed separately).

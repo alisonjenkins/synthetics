@@ -41,7 +41,7 @@ cnpg-install:
 images:
     #!/usr/bin/env bash
     set -euo pipefail
-    for pair in "worker-image:synthetics-worker" "control-plane-image:synthetics-control-plane"; do
+    for pair in "worker-image:synthetics-worker" "control-plane-image:synthetics-control-plane" "mock-datadog-image:synthetics-mock-datadog"; do
       attr="${pair%%:*}"; name="${pair##*:}"
       out="$(nix build ".#${attr}" --no-link --print-out-paths)"
       docker load < "$out"

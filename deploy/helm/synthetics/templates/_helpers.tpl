@@ -19,3 +19,15 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "synthetics.cpService" -}}
 {{- printf "%s-control-plane" (include "synthetics.fullname" .) -}}
 {{- end -}}
+
+{{- define "synthetics.mockService" -}}
+{{- printf "%s-mock-datadog" .Release.Name -}}
+{{- end -}}
+
+{{- define "synthetics.dogstatsdTarget" -}}
+{{- if .Values.mockDatadog.enabled -}}
+{{- printf "%s:8125" (include "synthetics.mockService" .) -}}
+{{- else -}}
+{{- .Values.worker.dogstatsd -}}
+{{- end -}}
+{{- end -}}
