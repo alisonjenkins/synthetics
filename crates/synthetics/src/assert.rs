@@ -91,8 +91,8 @@ fn passes(assertion: &Assertion, ctx: &AssertContext) -> bool {
             .cert_days_to_expiry
             .map(|d| d >= i64::from(*days))
             .unwrap_or(false),
-        Assertion::BodyContains { value } => contains_bytes(ctx.body, value.as_bytes()),
-        Assertion::BodyNotContains { value } => !contains_bytes(ctx.body, value.as_bytes()),
+        Assertion::BodyContains { value } => crate::simd::contains(ctx.body, value.as_bytes()),
+        Assertion::BodyNotContains { value } => !crate::simd::contains(ctx.body, value.as_bytes()),
         Assertion::BodyRegex { pattern } => match compiled_regex(pattern) {
             Some(re) => re.is_match(ctx.body),
             None => false,
@@ -106,17 +106,6 @@ fn find_header<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a st
         .iter()
         .find(|(n, _)| n.eq_ignore_ascii_case(name))
         .map(|(_, v)| v.as_str())
-}
-
-/// Scalar substring search. Replaced by the SIMD path in T9 (V6).
-fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    if needle.is_empty() {
-        return true;
-    }
-    if needle.len() > haystack.len() {
-        return false;
-    }
-    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

@@ -17,6 +17,7 @@ pub mod check;
 pub mod config;
 pub mod metric;
 pub mod scheduler;
+pub mod simd;
 pub mod sink;
 pub mod source;
 pub mod telemetry;

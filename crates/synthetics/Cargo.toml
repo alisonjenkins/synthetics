@@ -35,9 +35,14 @@ webpki-roots = "1.0.8"
 x509-parser = "0.18.1"
 
 [dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 libc = "0.2.186"
 rcgen = "0.14.8"
 tokio = { version = "1.52.3", features = ["macros", "rt"] }
+
+[[bench]]
+name = "body_scan"
+harness = false
 
 [lints]
 workspace = true
