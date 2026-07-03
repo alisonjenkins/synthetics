@@ -34,6 +34,12 @@ pub struct ResolvedCheck {
     /// The worker still requires the address to be in its operator allowlist.
     #[serde(default)]
     pub allow_internal: bool,
+    /// Extra attempts on failure before reporting down (V13, #6).
+    #[serde(default)]
+    pub retries: u32,
+    /// Wait between a failed attempt and its retry.
+    #[serde(default, with = "humantime_serde")]
+    pub retry_backoff: Duration,
 }
 
 /// A protocol-specific target specification (as authored / resolved).

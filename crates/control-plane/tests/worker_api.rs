@@ -29,6 +29,8 @@ async fn seeded_app() -> Router {
                 interval: Some(Duration::from_secs(30)),
                 timeout: None,
                 tags: vec![],
+                retries: None,
+                retry_backoff: None,
             },
         })
         .await
@@ -57,6 +59,8 @@ async fn seeded_app() -> Router {
             tags: vec![],
             assertions: vec![],
             allow_internal: false,
+            retries: None,
+            retry_backoff: None,
         })
         .await
         .unwrap();

@@ -23,6 +23,8 @@ fn tcp_endpoint(id: &str, addr: std::net::SocketAddr, interval: Duration) -> Arc
         }),
         assertions: vec![],
         allow_internal: false,
+        retries: 1,
+        retry_backoff: std::time::Duration::from_millis(300),
     })
 }
 
@@ -32,7 +34,11 @@ async fn endpoint_fires_repeatedly_on_its_interval() {
     let addr = listener.local_addr().unwrap();
 
     let sink = Arc::new(MockSink::new());
-    let mut sched = Scheduler::new(Arc::clone(&sink), 16, std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()));
+    let mut sched = Scheduler::new(
+        Arc::clone(&sink),
+        16,
+        std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()),
+    );
     sched.reconcile(vec![tcp_endpoint(
         "healthy",
         addr,
@@ -59,7 +65,11 @@ async fn shutdown_stops_the_scheduler_promptly() {
     let addr = listener.local_addr().unwrap();
 
     let sink = Arc::new(MockSink::new());
-    let mut sched = Scheduler::new(Arc::clone(&sink), 16, std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()));
+    let mut sched = Scheduler::new(
+        Arc::clone(&sink),
+        16,
+        std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()),
+    );
     sched.reconcile(vec![tcp_endpoint(
         "healthy",
         addr,
@@ -79,7 +89,11 @@ async fn reconcile_adds_removes_and_keeps_endpoints() {
     let interval = Duration::from_secs(60); // long: we only inspect membership
 
     let sink = Arc::new(MockSink::new());
-    let mut sched = Scheduler::new(Arc::clone(&sink), 16, std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()));
+    let mut sched = Scheduler::new(
+        Arc::clone(&sink),
+        16,
+        std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()),
+    );
 
     sched.reconcile(vec![
         tcp_endpoint("a", addr, interval),

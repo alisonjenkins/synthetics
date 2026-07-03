@@ -46,6 +46,8 @@ fn http_endpoint(id: &str, url: &str, assertions: Vec<Assertion>) -> EndpointCon
         }),
         assertions,
         allow_internal: false,
+        retries: 1,
+        retry_backoff: std::time::Duration::from_millis(300),
     }
 }
 
@@ -137,6 +139,8 @@ async fn tcp_success() {
         }),
         assertions: vec![],
         allow_internal: false,
+        retries: 1,
+        retry_backoff: std::time::Duration::from_millis(300),
     };
 
     let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;
@@ -165,6 +169,8 @@ async fn tcp_connect_refused_is_a_failure() {
         }),
         assertions: vec![],
         allow_internal: false,
+        retries: 1,
+        retry_backoff: std::time::Duration::from_millis(300),
     };
 
     let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;

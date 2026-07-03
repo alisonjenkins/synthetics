@@ -18,6 +18,12 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Fallback concurrency cap (ADR 0006) when `[defaults]` does not set one.
 pub const DEFAULT_MAX_CONCURRENCY: usize = 256;
+/// Fallback number of extra attempts on a failing check before it is reported
+/// down (V13). One retry masks a single transient DNS/SYN blip without hiding a
+/// genuine outage.
+pub const DEFAULT_RETRIES: u32 = 1;
+/// Fallback wait between a failed attempt and its retry.
+pub const DEFAULT_RETRY_BACKOFF: Duration = Duration::from_millis(300);
 
 /// A fully validated configuration ready for the scheduler.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +52,10 @@ pub struct EndpointConfig {
     /// Opt-in to connect to an internal/private resolved address (SSRF guard,
     /// #5). Enforced at connect time against the worker's operator allowlist.
     pub allow_internal: bool,
+    /// Extra attempts on failure before reporting down (V13, #6).
+    pub retries: u32,
+    /// Wait between a failed attempt and its retry.
+    pub retry_backoff: Duration,
 }
 
 /// The protocol-specific target of a check.
@@ -270,6 +280,10 @@ mod raw {
         pub timeout: Option<Duration>,
         #[serde(default)]
         pub max_concurrency: Option<usize>,
+        #[serde(default)]
+        pub retries: Option<u32>,
+        #[serde(default, with = "humantime_serde::option")]
+        pub retry_backoff: Option<Duration>,
     }
 
     #[derive(Deserialize)]
@@ -284,6 +298,10 @@ mod raw {
         pub tags: Vec<String>,
         #[serde(default)]
         pub allow_internal: bool,
+        #[serde(default)]
+        pub retries: Option<u32>,
+        #[serde(default, with = "humantime_serde::option")]
+        pub retry_backoff: Option<Duration>,
         pub http: Option<RawHttp>,
         pub tcp: Option<RawTcp>,
         pub ws: Option<RawWs>,
@@ -324,6 +342,8 @@ mod raw {
 fn build_and_validate(raw: raw::RawConfig) -> Result<Config, ConfigValidateError> {
     let default_interval = raw.defaults.interval.unwrap_or(DEFAULT_INTERVAL);
     let default_timeout = raw.defaults.timeout.unwrap_or(DEFAULT_TIMEOUT);
+    let default_retries = raw.defaults.retries.unwrap_or(DEFAULT_RETRIES);
+    let default_retry_backoff = raw.defaults.retry_backoff.unwrap_or(DEFAULT_RETRY_BACKOFF);
     let max_concurrency = raw
         .defaults
         .max_concurrency
@@ -361,6 +381,8 @@ fn build_and_validate(raw: raw::RawConfig) -> Result<Config, ConfigValidateError
             target,
             assertions: ep.assertions,
             allow_internal: ep.allow_internal,
+            retries: ep.retries.unwrap_or(default_retries),
+            retry_backoff: ep.retry_backoff.unwrap_or(default_retry_backoff),
         });
     }
 

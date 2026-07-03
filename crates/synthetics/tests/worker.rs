@@ -40,7 +40,11 @@ id = "a"
     );
 
     let sink = Arc::new(MockSink::new());
-    let scheduler = Scheduler::new(sink, 16, std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()));
+    let scheduler = Scheduler::new(
+        sink,
+        16,
+        std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()),
+    );
     let mut worker = Worker::new(FileConfigSource::new(&path), scheduler);
 
     worker.reload().await.expect("initial load");
@@ -76,7 +80,11 @@ id = "a"
     );
 
     let sink = Arc::new(MockSink::new());
-    let scheduler = Scheduler::new(sink, 16, std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()));
+    let scheduler = Scheduler::new(
+        sink,
+        16,
+        std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()),
+    );
     let mut worker = Worker::new(FileConfigSource::new(&path), scheduler);
     worker.reload().await.expect("initial load");
     assert_eq!(worker.running_ids(), vec!["a".to_string()]);
@@ -111,7 +119,11 @@ async fn unchanged_endpoint_keeps_firing_across_reload() {
     write(&path, &cfg_a);
 
     let sink = Arc::new(MockSink::new());
-    let scheduler = Scheduler::new(Arc::clone(&sink), 16, std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()));
+    let scheduler = Scheduler::new(
+        Arc::clone(&sink),
+        16,
+        std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()),
+    );
     let mut worker = Worker::new(FileConfigSource::new(&path), scheduler);
     worker.reload().await.expect("initial load");
 

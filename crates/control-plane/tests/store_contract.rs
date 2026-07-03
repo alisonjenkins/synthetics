@@ -24,6 +24,8 @@ async fn exercise<S: ConfigStore>(store: &S) {
             interval: Some(Duration::from_secs(30)),
             timeout: None,
             tags: vec!["product:web".into()],
+            retries: None,
+            retry_backoff: None,
         },
     };
     store.upsert_node(node.clone()).await.unwrap();
@@ -51,6 +53,8 @@ async fn exercise<S: ConfigStore>(store: &S) {
             in_range: None,
         }],
         allow_internal: false,
+        retries: None,
+        retry_backoff: None,
     };
     store.upsert_endpoint(ep.clone()).await.unwrap();
     assert_eq!(

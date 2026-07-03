@@ -29,6 +29,8 @@ async fn seed(store: &MemoryStore) {
                 interval: Some(Duration::from_secs(30)),
                 timeout: None,
                 tags: vec![],
+                retries: None,
+                retry_backoff: None,
             },
         })
         .await
@@ -57,6 +59,8 @@ async fn seed(store: &MemoryStore) {
             tags: vec![],
             assertions: vec![],
             allow_internal: false,
+            retries: None,
+            retry_backoff: None,
         })
         .await
         .unwrap();
@@ -143,7 +147,10 @@ async fn heartbeat_times_out_against_a_hung_server() {
 
     let start = Instant::now();
     let res = source.heartbeat().await;
-    assert!(res.is_err(), "hung server must surface as an error, not a hang");
+    assert!(
+        res.is_err(),
+        "hung server must surface as an error, not a hang"
+    );
     assert!(
         start.elapsed() < Duration::from_secs(5),
         "heartbeat must give up on the configured timeout, not hang: took {:?}",

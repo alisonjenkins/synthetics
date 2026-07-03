@@ -41,6 +41,12 @@ pub struct NodeDefaults {
     /// Tags contributed to every descendant endpoint's metrics.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Default retry count for descendants (V13, #6).
+    #[serde(default)]
+    pub retries: Option<u32>,
+    /// Default wait between a failed attempt and its retry, for descendants.
+    #[serde(default, with = "humantime_serde::option")]
+    pub retry_backoff: Option<Duration>,
 }
 
 /// An endpoint to check, hanging off an environment node.
@@ -70,6 +76,12 @@ pub struct Endpoint {
     /// endpoint (SSRF guard, #5). Still gated by the worker's operator allowlist.
     #[serde(default)]
     pub allow_internal: bool,
+    /// Retry count override (falls back to inherited defaults, then global; #6).
+    #[serde(default)]
+    pub retries: Option<u32>,
+    /// Retry backoff override (falls back to inherited defaults, then global).
+    #[serde(default, with = "humantime_serde::option")]
+    pub retry_backoff: Option<Duration>,
 }
 
 // Target specs are the CP↔worker wire types, defined once in the worker crate

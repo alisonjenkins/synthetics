@@ -34,6 +34,8 @@ fn tcp_endpoint(id: &str, environment: &str, interval: Option<Duration>) -> Endp
         tags: vec![],
         assertions: vec![],
         allow_internal: false,
+        retries: None,
+        retry_backoff: None,
     }
 }
 
@@ -48,6 +50,8 @@ fn hierarchy() -> Vec<Node> {
                 interval: Some(Duration::from_secs(60)),
                 timeout: None,
                 tags: vec!["team:web".into()],
+                retries: None,
+                retry_backoff: None,
             },
         ),
         node(
@@ -66,6 +70,8 @@ fn hierarchy() -> Vec<Node> {
                 interval: Some(Duration::from_secs(30)),
                 timeout: None,
                 tags: vec!["env:prod".into()],
+                retries: None,
+                retry_backoff: None,
             },
         ),
     ]

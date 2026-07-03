@@ -103,7 +103,9 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let dogstatsd = resolve_dogstatsd(&args.dogstatsd).await;
     let sink = Arc::new(DogStatsdSink::udp(dogstatsd).await?);
 
-    let policy = Arc::new(synthetics::net_guard::NetPolicy::new(&args.allow_internal_cidr)?);
+    let policy = Arc::new(synthetics::net_guard::NetPolicy::new(
+        &args.allow_internal_cidr,
+    )?);
 
     let (reload_tx, reload_rx) = mpsc::unbounded_channel();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);

@@ -59,7 +59,6 @@ async fn plaintext_get_records_status_size_and_phase_timings() {
         &target(&format!("http://{addr}/")),
         Duration::from_secs(5),
         0,
-    
         false,
         &synthetics::net_guard::NetPolicy::unrestricted(),
     )
@@ -115,7 +114,6 @@ async fn follows_redirect_and_counts_it() {
         &target(&format!("http://{addr}/")),
         Duration::from_secs(5),
         DEFAULT_MAX_REDIRECTS,
-    
         false,
         &synthetics::net_guard::NetPolicy::unrestricted(),
     )
@@ -137,7 +135,6 @@ async fn too_many_redirects_is_an_error() {
         &target(&format!("http://{addr}/")),
         Duration::from_secs(5),
         2,
-    
         false,
         &synthetics::net_guard::NetPolicy::unrestricted(),
     )
@@ -170,7 +167,6 @@ async fn hung_server_times_out_on_request_phase() {
         &target(&format!("http://{addr}/")),
         Duration::from_millis(300),
         0,
-    
         false,
         &synthetics::net_guard::NetPolicy::unrestricted(),
     )
@@ -190,7 +186,6 @@ async fn connection_refused_is_a_connect_error() {
         &target(&format!("http://{addr}/")),
         Duration::from_secs(2),
         0,
-    
         false,
         &synthetics::net_guard::NetPolicy::unrestricted(),
     )
@@ -205,7 +200,6 @@ async fn unresolvable_host_is_a_dns_error() {
         &target("http://nonexistent.invalid/"),
         Duration::from_secs(3),
         0,
-    
         false,
         &synthetics::net_guard::NetPolicy::unrestricted(),
     )
@@ -268,7 +262,15 @@ async fn https_check_records_tls_handshake_and_cert_expiry() {
     let mut t = target(&format!("https://127.0.0.1:{}/", addr.port()));
     t.allow_insecure = true;
 
-    let out = run_http_check(&t, Duration::from_secs(5), 0, false, &synthetics::net_guard::NetPolicy::unrestricted()).await.unwrap();
+    let out = run_http_check(
+        &t,
+        Duration::from_secs(5),
+        0,
+        false,
+        &synthetics::net_guard::NetPolicy::unrestricted(),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(out.status, 200);
     assert_eq!(out.body, b"sec");

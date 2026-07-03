@@ -52,6 +52,8 @@ async fn healthy_endpoint_fires_on_schedule_despite_hung_neighbor() {
         }),
         assertions: vec![],
         allow_internal: false,
+        retries: 1,
+        retry_backoff: std::time::Duration::from_millis(300),
     });
     let hung = Arc::new(EndpointConfig {
         id: "hung".to_string(),
@@ -68,11 +70,17 @@ async fn healthy_endpoint_fires_on_schedule_despite_hung_neighbor() {
         }),
         assertions: vec![],
         allow_internal: false,
+        retries: 1,
+        retry_backoff: std::time::Duration::from_millis(300),
     });
 
     let sink = Arc::new(MockSink::new());
     // Concurrency ample so the hung check cannot starve the healthy one.
-    let mut sched = Scheduler::new(Arc::clone(&sink), 16, std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()));
+    let mut sched = Scheduler::new(
+        Arc::clone(&sink),
+        16,
+        std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()),
+    );
     sched.reconcile(vec![healthy, hung]);
 
     tokio::time::sleep(Duration::from_millis(300)).await;

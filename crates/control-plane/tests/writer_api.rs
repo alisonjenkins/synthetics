@@ -75,6 +75,8 @@ fn tcp_endpoint(id: &str, env: &str, port: u16) -> Vec<u8> {
         tags: vec![],
         assertions: vec![],
         allow_internal: false,
+        retries: None,
+        retry_backoff: None,
     };
     serde_json::to_vec(&ep).unwrap()
 }
@@ -200,6 +202,8 @@ async fn internal_literal_ip_target_without_optin_is_rejected() {
         tags: vec![],
         assertions: vec![],
         allow_internal: false,
+        retries: None,
+        retry_backoff: None,
     };
     let (status, body) = send(
         &app,
@@ -248,6 +252,8 @@ async fn invalid_http_url_is_rejected() {
         tags: vec![],
         assertions: vec![],
         allow_internal: false,
+        retries: None,
+        retry_backoff: None,
     };
     let (status, body) = send(
         &app,

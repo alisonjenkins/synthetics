@@ -40,9 +40,14 @@ fn ws_target(url: &str) -> WsTarget {
 #[tokio::test]
 async fn handshake_succeeds_and_records_timings() {
     let addr = ws_server().await;
-    let out = run_ws_check(&ws_target(&format!("ws://{addr}/")), Duration::from_secs(5), false, &synthetics::net_guard::NetPolicy::unrestricted())
-        .await
-        .unwrap();
+    let out = run_ws_check(
+        &ws_target(&format!("ws://{addr}/")),
+        Duration::from_secs(5),
+        false,
+        &synthetics::net_guard::NetPolicy::unrestricted(),
+    )
+    .await
+    .unwrap();
 
     assert!(out.timings.dns.is_some());
     assert!(out.timings.connect.is_some());
@@ -54,9 +59,14 @@ async fn handshake_succeeds_and_records_timings() {
 
 #[tokio::test]
 async fn wrong_scheme_is_unsupported() {
-    let err = run_ws_check(&ws_target("http://127.0.0.1/"), Duration::from_secs(2), false, &synthetics::net_guard::NetPolicy::unrestricted())
-        .await
-        .unwrap_err();
+    let err = run_ws_check(
+        &ws_target("http://127.0.0.1/"),
+        Duration::from_secs(2),
+        false,
+        &synthetics::net_guard::NetPolicy::unrestricted(),
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, WsCheckError::UnsupportedScheme { .. }),
         "got {err:?}"
@@ -68,9 +78,14 @@ async fn connection_refused_is_a_connect_error() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     drop(listener);
-    let err = run_ws_check(&ws_target(&format!("ws://{addr}/")), Duration::from_secs(2), false, &synthetics::net_guard::NetPolicy::unrestricted())
-        .await
-        .unwrap_err();
+    let err = run_ws_check(
+        &ws_target(&format!("ws://{addr}/")),
+        Duration::from_secs(2),
+        false,
+        &synthetics::net_guard::NetPolicy::unrestricted(),
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(err, WsCheckError::Connect { .. }), "got {err:?}");
 }
 
@@ -113,6 +128,8 @@ async fn orchestrator_produces_ws_report() {
         target: Target::Ws(ws_target(&format!("ws://{addr}/"))),
         assertions: vec![],
         allow_internal: false,
+        retries: 1,
+        retry_backoff: std::time::Duration::from_millis(300),
     };
 
     let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;

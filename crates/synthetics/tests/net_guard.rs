@@ -35,7 +35,12 @@ fn classifies_internal_ranges() {
 
 #[test]
 fn classifies_public_ranges() {
-    for s in ["1.1.1.1", "8.8.8.8", "93.184.216.34", "2606:4700:4700::1111"] {
+    for s in [
+        "1.1.1.1",
+        "8.8.8.8",
+        "93.184.216.34",
+        "2606:4700:4700::1111",
+    ] {
         assert!(!is_internal_ip(ip(s)), "{s} should be public");
     }
 }

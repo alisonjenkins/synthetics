@@ -219,5 +219,7 @@ fn to_endpoint(check: ResolvedCheck) -> Option<EndpointConfig> {
         target,
         assertions: check.assertions,
         allow_internal: check.allow_internal,
+        retries: check.retries,
+        retry_backoff: check.retry_backoff,
     })
 }

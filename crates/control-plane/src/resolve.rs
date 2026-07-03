@@ -10,7 +10,9 @@
 
 use std::collections::HashMap;
 
-use synthetics::config::{DEFAULT_INTERVAL, DEFAULT_TIMEOUT};
+use synthetics::config::{
+    DEFAULT_INTERVAL, DEFAULT_RETRIES, DEFAULT_RETRY_BACKOFF, DEFAULT_TIMEOUT,
+};
 
 use crate::model::{Endpoint, Node};
 
@@ -69,6 +71,14 @@ pub fn resolve_one(
         .timeout
         .or_else(|| chain.iter().find_map(|n| n.defaults.timeout))
         .unwrap_or(DEFAULT_TIMEOUT);
+    let retries = endpoint
+        .retries
+        .or_else(|| chain.iter().find_map(|n| n.defaults.retries))
+        .unwrap_or(DEFAULT_RETRIES);
+    let retry_backoff = endpoint
+        .retry_backoff
+        .or_else(|| chain.iter().find_map(|n| n.defaults.retry_backoff))
+        .unwrap_or(DEFAULT_RETRY_BACKOFF);
 
     // Tags: root-first so higher levels come first, then endpoint tags.
     let mut tags = Vec::new();
@@ -87,6 +97,8 @@ pub fn resolve_one(
         target: endpoint.target.clone(),
         assertions: endpoint.assertions.clone(),
         allow_internal: endpoint.allow_internal,
+        retries,
+        retry_backoff,
     })
 }
 
