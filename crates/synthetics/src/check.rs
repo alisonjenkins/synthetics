@@ -29,6 +29,33 @@ use http::DEFAULT_MAX_REDIRECTS;
 /// new protocol is a compiler-flagged variant, V36), evaluate assertions (V18),
 /// and map success/failure/detail (V9). This is the unit the scheduler drives.
 pub async fn run_endpoint(endpoint: &EndpointConfig, policy: &NetPolicy) -> CheckReport {
+    // Retry a failing check up to `retries` times with `retry_backoff` between
+    // attempts before reporting it down (V13, #6). This absorbs a single
+    // transient DNS/SYN blip without hiding a genuine outage. A success (or a
+    // panic-isolated report) short-circuits immediately. An assertion failure is
+    // retried too — flaky content is as much a false alarm as a dropped SYN.
+    let mut attempt: u32 = 0;
+    loop {
+        let report = run_once(endpoint, policy).await;
+        if report.outcome == Outcome::Success || attempt >= endpoint.retries {
+            return report;
+        }
+        attempt += 1;
+        tracing::info!(
+            endpoint = %endpoint.id,
+            attempt,
+            of = endpoint.retries,
+            failure = ?report.failure,
+            "check failed; retrying after backoff",
+        );
+        tokio::time::sleep(endpoint.retry_backoff).await;
+    }
+}
+
+/// One attempt at an endpoint's check (no retries): dispatch on the target
+/// protocol (exhaustive match — a new protocol is a compiler-flagged variant,
+/// V36), evaluate assertions (V18), and map success/failure/detail (V9).
+async fn run_once(endpoint: &EndpointConfig, policy: &NetPolicy) -> CheckReport {
     let allow_internal = endpoint.allow_internal;
     match &endpoint.target {
         Target::Http(target) => {
