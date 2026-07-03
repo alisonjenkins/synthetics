@@ -14,6 +14,7 @@ pub const NAME: &str = "synthetics";
 
 pub mod config;
 pub mod metric;
+pub mod sink;
 
 #[cfg(test)]
 mod tests {

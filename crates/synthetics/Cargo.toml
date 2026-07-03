@@ -20,7 +20,9 @@ humantime-serde = "1.1.1"
 regex = "1.12.4"
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["net", "rt", "time"] }
 toml = "1.1.2"
+tracing = "0.1.44"
 url = { version = "2.5.8", features = ["serde"] }
 
 [dev-dependencies]
