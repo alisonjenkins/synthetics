@@ -7,7 +7,6 @@
 //! worker crate's [`Assertion`] type. Resolution of the hierarchy into flat
 //! worker checks is a separate step (T23).
 
-use std::collections::BTreeMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -69,43 +68,9 @@ pub struct Endpoint {
     pub assertions: Vec<Assertion>,
 }
 
-/// A protocol-specific target specification (pre-resolution / pre-validation).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum TargetSpec {
-    /// An HTTP(S) target.
-    Http(HttpSpec),
-    /// A TCP target.
-    Tcp(TcpSpec),
-}
-
-/// HTTP target specification as authored.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HttpSpec {
-    /// Target URL.
-    pub url: String,
-    /// HTTP method; defaults to `GET` when absent.
-    #[serde(default)]
-    pub method: Option<String>,
-    /// Request headers.
-    #[serde(default)]
-    pub headers: BTreeMap<String, String>,
-    /// Optional request body.
-    #[serde(default)]
-    pub body: Option<String>,
-    /// Skip TLS verification for self-signed internal endpoints.
-    #[serde(default)]
-    pub allow_insecure: bool,
-}
-
-/// TCP target specification as authored.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TcpSpec {
-    /// Hostname or IP to connect to.
-    pub host: String,
-    /// TCP port to connect to.
-    pub port: u16,
-}
+// Target specs are the CP↔worker wire types, defined once in the worker crate
+// and re-exported here so both sides share one definition (T26 contract).
+pub use synthetics::wire::{HttpSpec, TargetSpec, TcpSpec};
 
 /// A registered worker and its last heartbeat (I.membership).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

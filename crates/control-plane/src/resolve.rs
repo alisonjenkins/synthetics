@@ -9,32 +9,14 @@
 //! consume (T21/T26).
 
 use std::collections::HashMap;
-use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
-use synthetics::config::{Assertion, DEFAULT_INTERVAL, DEFAULT_TIMEOUT};
+use synthetics::config::{DEFAULT_INTERVAL, DEFAULT_TIMEOUT};
 
-use crate::model::{Endpoint, Node, TargetSpec};
+use crate::model::{Endpoint, Node};
 
-/// A fully resolved check ready to hand to a worker. Serde-serializable — this
-/// is the control-plane → worker wire contract.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ResolvedCheck {
-    /// Stable endpoint id (rendezvous + diff key).
-    pub id: String,
-    /// Effective check interval.
-    #[serde(with = "humantime_serde")]
-    pub interval: Duration,
-    /// Effective per-check timeout.
-    #[serde(with = "humantime_serde")]
-    pub timeout: Duration,
-    /// Effective tags (hierarchy auto-tags + inherited + endpoint tags).
-    pub tags: Vec<String>,
-    /// What to check.
-    pub target: TargetSpec,
-    /// Assertions to evaluate.
-    pub assertions: Vec<Assertion>,
-}
+// The resolved-check wire type is defined in the worker crate and re-exported
+// here (T26 contract).
+pub use synthetics::wire::ResolvedCheck;
 
 /// Why an endpoint could not be resolved.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

@@ -14,11 +14,11 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
+use synthetics::wire::{ChecksResponse, HeartbeatRequest, VersionResponse};
 
 use crate::auth::{WorkerAuth, WorkerIdentity, WriterAuth, WriterIdentity};
 use crate::model::{Endpoint, Node, Worker};
-use crate::resolve::{resolve, ResolvedCheck};
+use crate::resolve::resolve;
 use crate::store::ConfigStore;
 use crate::validate::{validate_endpoint, validate_node, FieldError};
 
@@ -276,31 +276,6 @@ async fn list_endpoints<S: ConfigStore, A: WriterAuth>(
 // ---------------------------------------------------------------------------
 // Worker API (T25): mTLS, read-only + heartbeat.
 // ---------------------------------------------------------------------------
-
-/// Current config version (cheap poll target for change detection, V28).
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VersionResponse {
-    /// Monotonic config version.
-    pub version: u64,
-}
-
-/// The resolved checks plus the version they were resolved at.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChecksResponse {
-    /// Config version these checks correspond to.
-    pub version: u64,
-    /// Flat, resolved checks (hierarchy already merged, V25).
-    pub checks: Vec<ResolvedCheck>,
-}
-
-/// A worker heartbeat/registration body.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct HeartbeatRequest {
-    /// Worker id.
-    pub id: String,
-    /// Worker region.
-    pub region: String,
-}
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now()

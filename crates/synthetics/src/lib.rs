@@ -23,6 +23,7 @@ pub mod simd;
 pub mod sink;
 pub mod source;
 pub mod telemetry;
+pub mod wire;
 pub mod worker;
 
 #[cfg(test)]
