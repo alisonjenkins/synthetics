@@ -40,7 +40,7 @@ fn ws_target(url: &str) -> WsTarget {
 #[tokio::test]
 async fn handshake_succeeds_and_records_timings() {
     let addr = ws_server().await;
-    let out = run_ws_check(&ws_target(&format!("ws://{addr}/")), Duration::from_secs(5))
+    let out = run_ws_check(&ws_target(&format!("ws://{addr}/")), Duration::from_secs(5), false, &synthetics::net_guard::NetPolicy::unrestricted())
         .await
         .unwrap();
 
@@ -54,7 +54,7 @@ async fn handshake_succeeds_and_records_timings() {
 
 #[tokio::test]
 async fn wrong_scheme_is_unsupported() {
-    let err = run_ws_check(&ws_target("http://127.0.0.1/"), Duration::from_secs(2))
+    let err = run_ws_check(&ws_target("http://127.0.0.1/"), Duration::from_secs(2), false, &synthetics::net_guard::NetPolicy::unrestricted())
         .await
         .unwrap_err();
     assert!(
@@ -68,7 +68,7 @@ async fn connection_refused_is_a_connect_error() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     drop(listener);
-    let err = run_ws_check(&ws_target(&format!("ws://{addr}/")), Duration::from_secs(2))
+    let err = run_ws_check(&ws_target(&format!("ws://{addr}/")), Duration::from_secs(2), false, &synthetics::net_guard::NetPolicy::unrestricted())
         .await
         .unwrap_err();
     assert!(matches!(err, WsCheckError::Connect { .. }), "got {err:?}");
@@ -115,7 +115,7 @@ async fn orchestrator_produces_ws_report() {
         allow_internal: false,
     };
 
-    let report = run_endpoint(&ep).await;
+    let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;
     assert_eq!(report.outcome, Outcome::Success);
     match report.detail {
         CheckDetail::Ws(ws) => assert!(ws.handshake.is_some()),

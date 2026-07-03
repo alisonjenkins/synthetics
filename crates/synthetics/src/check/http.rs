@@ -108,6 +108,13 @@ pub enum HttpCheckError {
         #[source]
         source: std::io::Error,
     },
+    /// The resolved address was refused by the SSRF network policy (#5).
+    #[error("connection to {addr} blocked: {source}")]
+    Blocked {
+        addr: SocketAddr,
+        #[source]
+        source: crate::net_guard::GuardError,
+    },
     /// The host is not a valid TLS server name.
     #[error("{host:?} is not a valid TLS server name")]
     InvalidDnsName { host: String },
@@ -148,6 +155,8 @@ pub async fn run_http_check(
     target: &HttpTarget,
     timeout: Duration,
     max_redirects: u32,
+    allow_internal: bool,
+    policy: &crate::net_guard::NetPolicy,
 ) -> Result<HttpOutcome, HttpCheckError> {
     let start = Instant::now();
     let deadline = start + timeout;
@@ -156,7 +165,7 @@ pub async fn run_http_check(
     let mut redirects = 0u32;
 
     loop {
-        let hop = fetch_once(&url, target, deadline).await?;
+        let hop = fetch_once(&url, target, deadline, allow_internal, policy).await?;
 
         if is_redirect(hop.status) {
             if let Some(location) = hop.location.as_deref() {
@@ -206,6 +215,8 @@ async fn fetch_once(
     url: &Url,
     target: &HttpTarget,
     deadline: Instant,
+    allow_internal: bool,
+    policy: &crate::net_guard::NetPolicy,
 ) -> Result<Hop, HttpCheckError> {
     let https = match url.scheme() {
         "http" => false,
@@ -239,6 +250,13 @@ async fn fetch_once(
         .next()
         .ok_or_else(|| HttpCheckError::NoAddress { host: host.clone() })?;
     timings.dns = Some(t.elapsed());
+
+    // SSRF guard (#5): enforce the network policy against the *resolved* address
+    // before connecting, so a hostname that resolves to an internal address (or
+    // a rebinding attack) is caught here, not just at authoring time.
+    policy
+        .guard(addr.ip(), allow_internal)
+        .map_err(|source| HttpCheckError::Blocked { addr, source })?;
 
     // --- TCP connect ---
     let t = Instant::now();

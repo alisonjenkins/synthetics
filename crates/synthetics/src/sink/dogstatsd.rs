@@ -262,6 +262,7 @@ fn failure_tag(failure: FailureKind) -> &'static str {
         FailureKind::Protocol => "protocol",
         FailureKind::Assertion => "assertion",
         FailureKind::Panic => "panic",
+        FailureKind::Blocked => "blocked",
     }
 }
 

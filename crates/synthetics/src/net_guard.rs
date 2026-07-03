@@ -71,6 +71,9 @@ pub enum GuardError {
 #[derive(Debug, Clone, Default)]
 pub struct NetPolicy {
     allowlist: Vec<IpNet>,
+    /// When set, [`NetPolicy::guard`] permits every address. Used by tests that
+    /// connect to loopback servers; never set from operator config.
+    unrestricted: bool,
 }
 
 /// Failure parsing an operator allowlist entry.
@@ -107,7 +110,19 @@ impl NetPolicy {
             };
             allowlist.push(net);
         }
-        Ok(Self { allowlist })
+        Ok(Self {
+            allowlist,
+            unrestricted: false,
+        })
+    }
+
+    /// A policy that permits every address. For tests that exercise loopback
+    /// servers; must never be built from operator configuration.
+    pub fn unrestricted() -> Self {
+        Self {
+            allowlist: Vec::new(),
+            unrestricted: true,
+        }
     }
 
     /// Whether the allowlist covers `ip`.
@@ -119,7 +134,7 @@ impl NetPolicy {
     /// `allow_internal` is the endpoint's opt-in flag. Public addresses always
     /// pass; internal addresses pass only when opted in and allowlisted.
     pub fn guard(&self, ip: IpAddr, allow_internal: bool) -> Result<(), GuardError> {
-        if !is_internal_ip(ip) {
+        if self.unrestricted || !is_internal_ip(ip) {
             return Ok(());
         }
         if !allow_internal {

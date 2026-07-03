@@ -80,10 +80,22 @@ pub enum WsCheckError {
         #[source]
         source: tokio_tungstenite::tungstenite::Error,
     },
+    /// The resolved address was refused by the SSRF network policy (#5).
+    #[error("connection to {addr} blocked: {source}")]
+    Blocked {
+        addr: SocketAddr,
+        #[source]
+        source: crate::net_guard::GuardError,
+    },
 }
 
 /// Perform a WebSocket check against `target`, bounded by `timeout` (V19).
-pub async fn run_ws_check(target: &WsTarget, timeout: Duration) -> Result<WsOutcome, WsCheckError> {
+pub async fn run_ws_check(
+    target: &WsTarget,
+    timeout: Duration,
+    allow_internal: bool,
+    policy: &crate::net_guard::NetPolicy,
+) -> Result<WsOutcome, WsCheckError> {
     let start = Instant::now();
     let deadline = start + timeout;
 
@@ -122,6 +134,12 @@ pub async fn run_ws_check(target: &WsTarget, timeout: Duration) -> Result<WsOutc
         .next()
         .ok_or_else(|| WsCheckError::NoAddress { host: host.clone() })?;
     timings.dns = Some(t.elapsed());
+
+    // SSRF guard (#5): refuse an internal resolved address unless opted in and
+    // operator-allowlisted (checked post-DNS to defend against rebinding).
+    policy
+        .guard(addr.ip(), allow_internal)
+        .map_err(|source| WsCheckError::Blocked { addr, source })?;
 
     // --- TCP connect ---
     let t = Instant::now();

@@ -20,7 +20,7 @@ async fn connect_success_records_dns_and_connect_timings() {
         host: addr.ip().to_string(),
         port: addr.port(),
     };
-    let out = run_tcp_check(&target, Duration::from_secs(5))
+    let out = run_tcp_check(&target, Duration::from_secs(5), false, &synthetics::net_guard::NetPolicy::unrestricted())
         .await
         .unwrap();
 
@@ -40,7 +40,7 @@ async fn connection_refused_is_a_connect_error() {
         host: addr.ip().to_string(),
         port: addr.port(),
     };
-    let err = run_tcp_check(&target, Duration::from_secs(2))
+    let err = run_tcp_check(&target, Duration::from_secs(2), false, &synthetics::net_guard::NetPolicy::unrestricted())
         .await
         .unwrap_err();
     assert!(matches!(err, TcpCheckError::Connect { .. }), "got {err:?}");
@@ -52,7 +52,7 @@ async fn unresolvable_host_is_a_dns_error() {
         host: "nonexistent.invalid".to_string(),
         port: 80,
     };
-    let err = run_tcp_check(&target, Duration::from_secs(3))
+    let err = run_tcp_check(&target, Duration::from_secs(3), false, &synthetics::net_guard::NetPolicy::unrestricted())
         .await
         .unwrap_err();
     assert!(matches!(err, TcpCheckError::Dns { .. }), "got {err:?}");
@@ -65,6 +65,6 @@ async fn zero_budget_times_out_before_connecting() {
         host: "127.0.0.1".to_string(),
         port: 9,
     };
-    let err = run_tcp_check(&target, Duration::ZERO).await.unwrap_err();
+    let err = run_tcp_check(&target, Duration::ZERO, false, &synthetics::net_guard::NetPolicy::unrestricted()).await.unwrap_err();
     assert!(matches!(err, TcpCheckError::Timeout { .. }), "got {err:?}");
 }

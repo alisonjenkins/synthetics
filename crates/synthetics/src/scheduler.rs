@@ -38,6 +38,7 @@ struct Running {
 pub struct Scheduler<M> {
     sink: Arc<M>,
     concurrency: Arc<Semaphore>,
+    policy: Arc<crate::net_guard::NetPolicy>,
     epoch: Instant,
     running: HashMap<String, Running>,
 }
@@ -45,10 +46,15 @@ pub struct Scheduler<M> {
 impl<M: MetricSink + 'static> Scheduler<M> {
     /// Create a scheduler emitting to `sink`, with at most `max_concurrency`
     /// checks in flight at once (ADR 0006). Starts with no endpoints.
-    pub fn new(sink: Arc<M>, max_concurrency: usize) -> Self {
+    pub fn new(
+        sink: Arc<M>,
+        max_concurrency: usize,
+        policy: Arc<crate::net_guard::NetPolicy>,
+    ) -> Self {
         Self {
             sink,
             concurrency: Arc::new(Semaphore::new(max_concurrency.max(1))),
+            policy,
             epoch: Instant::now(),
             running: HashMap::new(),
         }
@@ -97,6 +103,7 @@ impl<M: MetricSink + 'static> Scheduler<M> {
             Arc::clone(&endpoint),
             Arc::clone(&self.sink),
             Arc::clone(&self.concurrency),
+            Arc::clone(&self.policy),
             self.epoch,
             rx,
         ));
@@ -132,6 +139,7 @@ async fn endpoint_loop<M: MetricSink + 'static>(
     endpoint: Arc<EndpointConfig>,
     sink: Arc<M>,
     concurrency: Arc<Semaphore>,
+    policy: Arc<crate::net_guard::NetPolicy>,
     epoch: Instant,
     mut shutdown: watch::Receiver<bool>,
 ) {
@@ -171,7 +179,7 @@ async fn endpoint_loop<M: MetricSink + 'static>(
             Err(_closed) => return,
         };
 
-        let report = run_check_isolated(Arc::clone(&endpoint)).await;
+        let report = run_check_isolated(Arc::clone(&endpoint), Arc::clone(&policy)).await;
         tracing::info!(
             endpoint = %report.endpoint_id,
             outcome = ?report.outcome,
@@ -188,11 +196,14 @@ async fn endpoint_loop<M: MetricSink + 'static>(
 /// report (V21) so the scheduler and other endpoints are unaffected. Runs inside
 /// a span carrying the endpoint id (V14).
 #[tracing::instrument(skip_all, fields(endpoint = %endpoint.id))]
-async fn run_check_isolated(endpoint: Arc<EndpointConfig>) -> CheckReport {
+async fn run_check_isolated(
+    endpoint: Arc<EndpointConfig>,
+    policy: Arc<crate::net_guard::NetPolicy>,
+) -> CheckReport {
     let id = endpoint.id.clone();
     let tags = endpoint.tags.clone();
     let detail = empty_detail(&endpoint.target);
-    let fut = async move { crate::check::run_endpoint(&endpoint).await };
+    let fut = async move { crate::check::run_endpoint(&endpoint, &policy).await };
     isolate(id, tags, detail, fut).await
 }
 

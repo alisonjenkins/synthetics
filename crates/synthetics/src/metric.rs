@@ -111,6 +111,8 @@ pub enum FailureKind {
     Assertion,
     /// The check task panicked and was isolated (V21).
     Panic,
+    /// The resolved address was refused by the SSRF network policy (#5).
+    Blocked,
 }
 
 /// A backend-neutral record of one check's result. Sinks translate this into

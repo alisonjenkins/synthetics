@@ -57,6 +57,13 @@ pub enum TcpCheckError {
         #[source]
         source: std::io::Error,
     },
+    /// The resolved address was refused by the SSRF network policy (#5).
+    #[error("connection to {addr} blocked: {source}")]
+    Blocked {
+        addr: SocketAddr,
+        #[source]
+        source: crate::net_guard::GuardError,
+    },
 }
 
 /// Perform a TCP check against `target`, bounded by `timeout` (total + per
@@ -64,6 +71,8 @@ pub enum TcpCheckError {
 pub async fn run_tcp_check(
     target: &TcpTarget,
     timeout: Duration,
+    allow_internal: bool,
+    policy: &crate::net_guard::NetPolicy,
 ) -> Result<TcpOutcome, TcpCheckError> {
     let start = Instant::now();
     let deadline = start + timeout;
@@ -89,6 +98,12 @@ pub async fn run_tcp_check(
             host: target.host.clone(),
         })?;
     timings.dns = Some(t.elapsed());
+
+    // SSRF guard (#5): refuse an internal resolved address unless opted in and
+    // operator-allowlisted (checked post-DNS to defend against rebinding).
+    policy
+        .guard(addr.ip(), allow_internal)
+        .map_err(|source| TcpCheckError::Blocked { addr, source })?;
 
     // --- TCP connect ---
     let t = Instant::now();

@@ -72,7 +72,7 @@ async fn healthy_endpoint_fires_on_schedule_despite_hung_neighbor() {
 
     let sink = Arc::new(MockSink::new());
     // Concurrency ample so the hung check cannot starve the healthy one.
-    let mut sched = Scheduler::new(Arc::clone(&sink), 16);
+    let mut sched = Scheduler::new(Arc::clone(&sink), 16, std::sync::Arc::new(synthetics::net_guard::NetPolicy::unrestricted()));
     sched.reconcile(vec![healthy, hung]);
 
     tokio::time::sleep(Duration::from_millis(300)).await;

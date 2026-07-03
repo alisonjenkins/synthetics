@@ -62,6 +62,12 @@ struct Args {
     /// Log output format.
     #[arg(long, value_enum, default_value_t = LogFmt::Json)]
     log_format: LogFmt,
+
+    /// Operator allowlist of internal CIDRs an `allow_internal` endpoint may
+    /// reach (SSRF guard, #5). Repeatable. Empty = no internal target permitted
+    /// even when an endpoint opts in (fail closed).
+    #[arg(long = "allow-internal-cidr", value_name = "CIDR")]
+    allow_internal_cidr: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -97,6 +103,8 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let dogstatsd = resolve_dogstatsd(&args.dogstatsd).await;
     let sink = Arc::new(DogStatsdSink::udp(dogstatsd).await?);
 
+    let policy = Arc::new(synthetics::net_guard::NetPolicy::new(&args.allow_internal_cidr)?);
+
     let (reload_tx, reload_rx) = mpsc::unbounded_channel();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     spawn_signal_handlers(reload_tx.clone(), shutdown_tx)?;
@@ -120,13 +128,14 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                 region = %args.region,
                 "synthetics daemon starting (control-plane mode)",
             );
-            serve(source, sink, reload_rx, shutdown_rx).await
+            serve(source, sink, policy, reload_rx, shutdown_rx).await
         }
         None => {
             tracing::info!(config = %args.config.display(), "synthetics daemon starting (file mode)");
             serve(
                 FileConfigSource::new(&args.config),
                 sink,
+                policy,
                 reload_rx,
                 shutdown_rx,
             )
@@ -140,12 +149,13 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 async fn serve<S: ConfigSource + 'static>(
     source: S,
     sink: Arc<DogStatsdSink>,
+    policy: Arc<synthetics::net_guard::NetPolicy>,
     reload_rx: mpsc::UnboundedReceiver<()>,
     shutdown_rx: watch::Receiver<bool>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Initial load is fatal — the daemon cannot start with no config.
     let initial = source.load().await?;
-    let mut scheduler = Scheduler::new(sink, initial.max_concurrency);
+    let mut scheduler = Scheduler::new(sink, initial.max_concurrency, policy);
     scheduler.reconcile(initial.endpoints.into_iter().map(Arc::new).collect());
     tracing::info!(
         endpoints = scheduler.running_ids().len(),

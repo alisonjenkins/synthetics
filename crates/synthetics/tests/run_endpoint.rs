@@ -66,7 +66,7 @@ async fn http_success_with_passing_assertions() {
         ],
     );
 
-    let report = run_endpoint(&ep).await;
+    let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;
 
     assert_eq!(report.endpoint_id, "home");
     assert_eq!(report.tags, vec!["env:test".to_string()]);
@@ -96,7 +96,7 @@ async fn http_success_but_failing_assertion_is_a_failure() {
         }],
     );
 
-    let report = run_endpoint(&ep).await;
+    let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;
 
     assert_eq!(report.outcome, Outcome::Failure);
     assert_eq!(report.failure, Some(FailureKind::Assertion));
@@ -113,7 +113,7 @@ async fn http_transport_failure_maps_to_failure_kind() {
     drop(listener);
 
     let ep = http_endpoint("dead", &format!("http://{addr}/"), vec![]);
-    let report = run_endpoint(&ep).await;
+    let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;
 
     assert_eq!(report.outcome, Outcome::Failure);
     assert_eq!(report.failure, Some(FailureKind::Connect));
@@ -139,7 +139,7 @@ async fn tcp_success() {
         allow_internal: false,
     };
 
-    let report = run_endpoint(&ep).await;
+    let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;
     assert_eq!(report.outcome, Outcome::Success);
     assert!(report.failure.is_none());
     match report.detail {
@@ -167,7 +167,7 @@ async fn tcp_connect_refused_is_a_failure() {
         allow_internal: false,
     };
 
-    let report = run_endpoint(&ep).await;
+    let report = run_endpoint(&ep, &synthetics::net_guard::NetPolicy::unrestricted()).await;
     assert_eq!(report.outcome, Outcome::Failure);
     assert_eq!(report.failure, Some(FailureKind::Connect));
 }

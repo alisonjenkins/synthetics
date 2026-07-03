@@ -16,6 +16,7 @@ use crate::config::{EndpointConfig, Target};
 use crate::metric::{
     CheckDetail, CheckReport, FailureKind, HttpDetail, Outcome, TcpDetail, WsDetail,
 };
+use crate::net_guard::NetPolicy;
 use http::{HttpCheckError, HttpOutcome};
 use tcp::TcpCheckError;
 use ws::{WsCheckError, WsOutcome};
@@ -27,19 +28,26 @@ use http::DEFAULT_MAX_REDIRECTS;
 /// [`CheckReport`] (T17): dispatch on the target protocol (exhaustive match — a
 /// new protocol is a compiler-flagged variant, V36), evaluate assertions (V18),
 /// and map success/failure/detail (V9). This is the unit the scheduler drives.
-pub async fn run_endpoint(endpoint: &EndpointConfig) -> CheckReport {
+pub async fn run_endpoint(endpoint: &EndpointConfig, policy: &NetPolicy) -> CheckReport {
+    let allow_internal = endpoint.allow_internal;
     match &endpoint.target {
         Target::Http(target) => {
-            let result =
-                http::run_http_check(target, endpoint.timeout, DEFAULT_MAX_REDIRECTS).await;
+            let result = http::run_http_check(
+                target,
+                endpoint.timeout,
+                DEFAULT_MAX_REDIRECTS,
+                allow_internal,
+                policy,
+            )
+            .await;
             build_http_report(endpoint, result)
         }
         Target::Tcp(target) => {
-            let result = tcp::run_tcp_check(target, endpoint.timeout).await;
+            let result = tcp::run_tcp_check(target, endpoint.timeout, allow_internal, policy).await;
             build_tcp_report(endpoint, result)
         }
         Target::Ws(target) => {
-            let result = ws::run_ws_check(target, endpoint.timeout).await;
+            let result = ws::run_ws_check(target, endpoint.timeout, allow_internal, policy).await;
             build_ws_report(endpoint, result)
         }
     }
@@ -144,6 +152,7 @@ fn http_failure_kind(error: &HttpCheckError) -> FailureKind {
     match error {
         HttpCheckError::Timeout { .. } => FailureKind::Timeout,
         HttpCheckError::Dns { .. } | HttpCheckError::NoAddress { .. } => FailureKind::Dns,
+        HttpCheckError::Blocked { .. } => FailureKind::Blocked,
         HttpCheckError::Connect { .. } => FailureKind::Connect,
         HttpCheckError::Tls { .. } | HttpCheckError::InvalidDnsName { .. } => FailureKind::Tls,
         HttpCheckError::MissingHost
@@ -166,6 +175,7 @@ fn tcp_failure_kind(error: &TcpCheckError) -> FailureKind {
     match error {
         TcpCheckError::Timeout { .. } => FailureKind::Timeout,
         TcpCheckError::Dns { .. } | TcpCheckError::NoAddress { .. } => FailureKind::Dns,
+        TcpCheckError::Blocked { .. } => FailureKind::Blocked,
         TcpCheckError::Connect { .. } => FailureKind::Connect,
     }
 }
@@ -221,6 +231,7 @@ fn ws_failure_kind(error: &WsCheckError) -> FailureKind {
     match error {
         WsCheckError::Timeout { .. } => FailureKind::Timeout,
         WsCheckError::Dns { .. } | WsCheckError::NoAddress { .. } => FailureKind::Dns,
+        WsCheckError::Blocked { .. } => FailureKind::Blocked,
         WsCheckError::Connect { .. } => FailureKind::Connect,
         WsCheckError::Tls { .. } | WsCheckError::InvalidDnsName { .. } => FailureKind::Tls,
         WsCheckError::MissingHost
