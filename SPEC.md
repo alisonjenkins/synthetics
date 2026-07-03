@@ -30,6 +30,9 @@ check. Replace pricey Datadog synthetics.
   Guard perf regressions.
 - Datadog-synthetic parity: record every signal a Datadog synthetic would
   (phase timings, sizes, status, cert age, redirects, assertion results).
+- Fault isolation. Purpose = monitor many possibly-unhealthy systems. Slow,
+  hung, or dead target must never delay, block, or fail checks of other
+  targets. Failure is the expected case, not the exception.
 - WebSocket = future, design must not block it.
 
 ## §I — external surfaces
@@ -89,6 +92,13 @@ check. Replace pricey Datadog synthetics.
 - V18 — assertions per endpoint (`I.assert`) evaluated each check; each
   assertion emits pass/fail; any fail = check outcome fail (V9). Assertion
   set is reloadable config (V3/V11).
+- V19 — every check bounded by hard timeout (per-phase + total). No check
+  runs unbounded. Timeout = emitted failure outcome (V9), not a hang.
+- V20 — fault isolation: one target slow/hung/dead never delays or blocks
+  another target's scheduled check. No head-of-line blocking. Dead targets
+  cannot starve healthy targets of concurrency/execution.
+- V21 — panic in one check task is caught + isolated; that check = failure
+  outcome, daemon + all other checks keep running. No cascade.
 
 ## §T — tasks
 
@@ -98,9 +108,10 @@ check. Replace pricey Datadog synthetics.
 | T2 | . | config model + parse (endpoints, intervals, params) | I.config,V1,V11 |
 | T3 | . | `MetricSink` trait + mock/no-op sink for tests | I.sink,V2,V9 |
 | T4 | . | Datadog agent sink (DogStatsD UDP/UDS) | I.ddagent,V2 |
-| T5 | . | HTTP check executor + per-fn error enum + full DD-parity timings | I.http,V1,V9,V10,V17 |
-| T6 | . | TCP check executor + per-fn error enum + connect timing | I.tcp,V1,V9,V10,V17 |
-| T7 | . | scheduler: per-endpoint interval, bounded concurrency | V5,V8 |
+| T5 | . | HTTP check executor + per-fn error enum + full DD-parity timings + timeouts | I.http,V1,V9,V10,V17,V19 |
+| T6 | . | TCP check executor + per-fn error enum + connect timing + timeout | I.tcp,V1,V9,V10,V17,V19 |
+| T7 | . | scheduler: per-endpoint interval, bounded concurrency, fault isolation | V5,V8,V20,V21 |
+| T15 | . | fault-isolation harness: timeout, panic catch, no-starvation test | V19,V20,V21 |
 | T8 | . | hot reload: watch/signal, diff config, no missed check | I.config,I.ctl,V3,V4,V11 |
 | T9 | . | SIMD hot paths (response scan/compare) + scalar fallback | V6 |
 | T10 | . | daemon wiring: startup, graceful shutdown | V4 |
