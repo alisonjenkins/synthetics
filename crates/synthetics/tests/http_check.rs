@@ -9,7 +9,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use synthetics::check::http::{run_http_check, HttpCheckError, DEFAULT_MAX_REDIRECTS};
+use synthetics::check::http::{
+    cert_days_to_expiry, run_http_check, HttpCheckError, DEFAULT_MAX_REDIRECTS,
+};
 use synthetics::config::HttpTarget;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -21,6 +23,7 @@ fn target(url: &str) -> HttpTarget {
         method: "GET".to_string(),
         headers: vec![],
         body: None,
+        allow_insecure: false,
     }
 }
 
@@ -193,13 +196,71 @@ async fn unresolvable_host_is_a_dns_error() {
     assert!(matches!(err, HttpCheckError::Dns { .. }), "got {err:?}");
 }
 
+#[test]
+fn cert_days_to_expiry_parses_a_real_cert() {
+    // A freshly generated self-signed cert is valid well into the future.
+    let ck = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let der = ck.cert.der().clone();
+    let days = cert_days_to_expiry(&der).expect("cert should parse");
+    assert!(days > 0, "expected positive days-to-expiry, got {days}");
+}
+
 #[tokio::test]
-async fn https_is_unsupported_until_tls_lands() {
-    let err = run_http_check(&target("https://127.0.0.1/"), Duration::from_secs(2), 0)
-        .await
-        .unwrap_err();
+async fn https_check_records_tls_handshake_and_cert_expiry() {
+    use std::sync::Arc;
+    use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    use tokio_rustls::rustls::ServerConfig;
+    use tokio_rustls::TlsAcceptor;
+
+    let _ = tokio_rustls::rustls::crypto::ring::default_provider().install_default();
+
+    // Self-signed cert + rustls server.
+    let ck = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let cert_der = CertificateDer::from(ck.cert.der().to_vec());
+    let key_der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(ck.signing_key.serialize_der()));
+    let server_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(vec![cert_der], key_der)
+        .unwrap();
+    let acceptor = TlsAcceptor::from(Arc::new(server_config));
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let (tcp, _) = match listener.accept().await {
+                Ok(p) => p,
+                Err(_) => return,
+            };
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                if let Ok(mut tls) = acceptor.accept(tcp).await {
+                    let mut buf = [0u8; 2048];
+                    let _ = tls.read(&mut buf).await;
+                    let _ = tls
+                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nsec")
+                        .await;
+                    let _ = tls.flush().await;
+                }
+            });
+        }
+    });
+
+    // allow_insecure to trust the self-signed cert; expiry is still recorded.
+    let mut t = target(&format!("https://127.0.0.1:{}/", addr.port()));
+    t.allow_insecure = true;
+
+    let out = run_http_check(&t, Duration::from_secs(5), 0).await.unwrap();
+
+    assert_eq!(out.status, 200);
+    assert_eq!(out.body, b"sec");
     assert!(
-        matches!(err, HttpCheckError::UnsupportedScheme { .. }),
-        "got {err:?}"
+        out.timings.tls_handshake.is_some(),
+        "tls handshake timed (V17)"
+    );
+    assert!(
+        out.cert_days_to_expiry.map(|d| d > 0).unwrap_or(false),
+        "cert expiry recorded, got {:?}",
+        out.cert_days_to_expiry
     );
 }

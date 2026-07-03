@@ -2,20 +2,30 @@
 //!
 //! Drives the request phases explicitly over a low-level stack (ADR 0001) so
 //! every Datadog-parity timing (V17) is real: DNS resolution, TCP connect, TLS
-//! handshake (T5b), time-to-first-byte, and body download are each measured. A
+//! handshake, time-to-first-byte, and body download are each measured, plus the
+//! served certificate's days-to-expiry for HTTPS. A
 //! single deadline bounds the whole check and every phase within it (V19): no
 //! await is issued without a remaining-time budget, so a slow or hung target
 //! fails as a timeout rather than hanging (V20). Errors are a per-function enum
 //! (V1). Static dispatch throughout (V35) — no `dyn`.
 
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::{Method, Request};
 use hyper_util::rt::TokioIo;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{lookup_host, TcpStream};
+use tokio_rustls::rustls::client::danger::{
+    HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
+};
+use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use tokio_rustls::rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
+use tokio_rustls::TlsConnector;
 use url::Url;
 
 use crate::config::HttpTarget;
@@ -35,7 +45,7 @@ pub struct HttpTimings {
     pub dns: Option<Duration>,
     /// TCP connect time.
     pub connect: Option<Duration>,
-    /// TLS handshake time (`None` for plain HTTP; filled by T5b for HTTPS).
+    /// TLS handshake time (`None` for plain HTTP).
     pub tls_handshake: Option<Duration>,
     /// Time from request send to first response byte.
     pub ttfb: Option<Duration>,
@@ -65,8 +75,7 @@ pub struct HttpOutcome {
     /// Final response body (possibly truncated). Never leaves the process
     /// except as assertion outcomes (V22).
     pub body: Vec<u8>,
-    /// Days until the served TLS certificate expires (`None` for plain HTTP;
-    /// filled by T5b for HTTPS).
+    /// Days until the served TLS certificate expires (`None` for plain HTTP).
     pub cert_days_to_expiry: Option<i64>,
 }
 
@@ -99,6 +108,16 @@ pub enum HttpCheckError {
     #[error("TCP connect to {addr} failed: {source}")]
     Connect {
         addr: SocketAddr,
+        #[source]
+        source: std::io::Error,
+    },
+    /// The host is not a valid TLS server name.
+    #[error("{host:?} is not a valid TLS server name")]
+    InvalidDnsName { host: String },
+    /// The TLS handshake failed.
+    #[error("TLS handshake with {host:?} failed: {source}")]
+    Tls {
+        host: String,
         #[source]
         source: std::io::Error,
     },
@@ -191,18 +210,22 @@ async fn fetch_once(
     target: &HttpTarget,
     deadline: Instant,
 ) -> Result<Hop, HttpCheckError> {
-    let scheme = url.scheme();
-    if scheme != "http" {
-        // TLS (https) lands in T5b.
-        return Err(HttpCheckError::UnsupportedScheme {
-            scheme: scheme.to_string(),
-        });
-    }
+    let https = match url.scheme() {
+        "http" => false,
+        "https" => true,
+        other => {
+            return Err(HttpCheckError::UnsupportedScheme {
+                scheme: other.to_string(),
+            })
+        }
+    };
     let host = url
         .host_str()
         .ok_or(HttpCheckError::MissingHost)?
         .to_string();
-    let port = url.port_or_known_default().unwrap_or(80);
+    let port = url
+        .port_or_known_default()
+        .unwrap_or(if https { 443 } else { 80 });
 
     let mut timings = HttpTimings::default();
 
@@ -222,23 +245,83 @@ async fn fetch_once(
 
     // --- TCP connect ---
     let t = Instant::now();
-    let stream = with_deadline(deadline, "connect", TcpStream::connect(addr))
+    let tcp = with_deadline(deadline, "connect", TcpStream::connect(addr))
         .await?
         .map_err(|source| HttpCheckError::Connect { addr, source })?;
     timings.connect = Some(t.elapsed());
 
-    // --- HTTP/1.1 handshake over the stream ---
-    let (mut sender, conn) = with_deadline(deadline, "connect", async {
-        hyper::client::conn::http1::handshake(TokioIo::new(stream)).await
-    })
-    .await?
-    .map_err(|source| HttpCheckError::Protocol { source })?;
+    if !https {
+        let ctx = Exchange {
+            url,
+            host: &host,
+            port,
+            target,
+            deadline,
+            timings,
+            cert_days_to_expiry: None,
+        };
+        return exchange(tcp, ctx).await;
+    }
+
+    // --- TLS handshake + certificate expiry (V17) ---
+    let t = Instant::now();
+    let tls = tls_connect(tcp, &host, target.allow_insecure, deadline).await?;
+    timings.tls_handshake = Some(t.elapsed());
+    let cert_days = tls
+        .get_ref()
+        .1
+        .peer_certificates()
+        .and_then(|certs| certs.first())
+        .and_then(cert_days_to_expiry);
+
+    let ctx = Exchange {
+        url,
+        host: &host,
+        port,
+        target,
+        deadline,
+        timings,
+        cert_days_to_expiry: cert_days,
+    };
+    exchange(tls, ctx).await
+}
+
+/// The non-stream context for one HTTP/1.1 exchange.
+struct Exchange<'a> {
+    url: &'a Url,
+    host: &'a str,
+    port: u16,
+    target: &'a HttpTarget,
+    deadline: Instant,
+    timings: HttpTimings,
+    cert_days_to_expiry: Option<i64>,
+}
+
+/// Perform the HTTP/1.1 request/response exchange over an established stream —
+/// plain TCP or TLS. Generic over the stream type so both paths stay static
+/// dispatch (V35), no boxing.
+async fn exchange<IO>(io: IO, ctx: Exchange<'_>) -> Result<Hop, HttpCheckError>
+where
+    IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let Exchange {
+        url,
+        host,
+        port,
+        target,
+        deadline,
+        mut timings,
+        cert_days_to_expiry,
+    } = ctx;
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(io))
+        .await
+        .map_err(|source| HttpCheckError::Protocol { source })?;
     // Drive the connection concurrently; it ends when the response completes.
     tokio::spawn(async move {
         let _ = conn.await;
     });
 
-    let request = build_request(url, &host, port, target)?;
+    let request = build_request(url, host, port, target)?;
 
     // --- send + TTFB ---
     let t = Instant::now();
@@ -276,8 +359,124 @@ async fn fetch_once(
         body,
         truncated,
         location,
-        cert_days_to_expiry: None,
+        cert_days_to_expiry,
     })
+}
+
+async fn tls_connect(
+    tcp: TcpStream,
+    host: &str,
+    allow_insecure: bool,
+    deadline: Instant,
+) -> Result<tokio_rustls::client::TlsStream<TcpStream>, HttpCheckError> {
+    let config = if allow_insecure {
+        insecure_client_config()
+    } else {
+        secure_client_config()
+    };
+    let server_name =
+        ServerName::try_from(host.to_string()).map_err(|_| HttpCheckError::InvalidDnsName {
+            host: host.to_string(),
+        })?;
+    let connector = TlsConnector::from(config);
+    with_deadline(deadline, "tls", connector.connect(server_name, tcp))
+        .await?
+        .map_err(|source| HttpCheckError::Tls {
+            host: host.to_string(),
+            source,
+        })
+}
+
+/// Days until the DER-encoded certificate expires (negative if already
+/// expired). `None` if it cannot be parsed. Public for testing.
+pub fn cert_days_to_expiry(cert: &CertificateDer<'_>) -> Option<i64> {
+    use x509_parser::prelude::FromDer;
+    let (_, parsed) = x509_parser::certificate::X509Certificate::from_der(cert.as_ref()).ok()?;
+    let not_after = parsed.validity().not_after.timestamp();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+    Some((not_after - now) / 86_400)
+}
+
+/// Process-wide client config trusting the webpki root store. Built once.
+fn secure_client_config() -> Arc<ClientConfig> {
+    static CFG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
+    CFG.get_or_init(|| {
+        install_ring();
+        let mut roots = RootCertStore::empty();
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        Arc::new(
+            ClientConfig::builder()
+                .with_root_certificates(roots)
+                .with_no_client_auth(),
+        )
+    })
+    .clone()
+}
+
+/// Process-wide client config that skips certificate verification, for targets
+/// configured with `allow_insecure` (internal self-signed endpoints). Cert
+/// expiry is still recorded. Built once.
+fn insecure_client_config() -> Arc<ClientConfig> {
+    static CFG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
+    CFG.get_or_init(|| {
+        install_ring();
+        Arc::new(
+            ClientConfig::builder()
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(NoCertVerify))
+                .with_no_client_auth(),
+        )
+    })
+    .clone()
+}
+
+fn install_ring() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        let _ = tokio_rustls::rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
+/// Certificate verifier that accepts any certificate. Used only for targets
+/// explicitly opting into `allow_insecure`.
+#[derive(Debug)]
+struct NoCertVerify;
+
+impl ServerCertVerifier for NoCertVerify {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, tokio_rustls::rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, tokio_rustls::rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, tokio_rustls::rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        tokio_rustls::rustls::crypto::ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
+    }
 }
 
 fn build_request(

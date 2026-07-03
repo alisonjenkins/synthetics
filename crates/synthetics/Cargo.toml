@@ -24,11 +24,15 @@ regex = "1.12.4"
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["io-util", "net", "rt", "time"] }
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring", "tls12", "logging"] }
 toml = "1.1.2"
 tracing = "0.1.44"
 url = { version = "2.5.8", features = ["serde"] }
+webpki-roots = "1.0.8"
+x509-parser = "0.18.1"
 
 [dev-dependencies]
+rcgen = "0.14.8"
 tokio = { version = "1.52.3", features = ["macros", "rt"] }
 
 [lints]

@@ -62,6 +62,9 @@ pub struct HttpTarget {
     pub headers: Vec<(String, String)>,
     /// Optional request body.
     pub body: Option<String>,
+    /// Skip TLS certificate verification (for internal endpoints with
+    /// self-signed certs). Cert expiry is still recorded. Default `false`.
+    pub allow_insecure: bool,
 }
 
 /// A TCP endpoint whose connect is timed (I.tcp).
@@ -253,6 +256,8 @@ mod raw {
         pub headers: BTreeMap<String, String>,
         #[serde(default)]
         pub body: Option<String>,
+        #[serde(default)]
+        pub allow_insecure: bool,
     }
 
     #[derive(Deserialize)]
@@ -338,6 +343,7 @@ fn build_target(
                 method,
                 headers,
                 body: http.body,
+                allow_insecure: http.allow_insecure,
             }))
         }
         (None, Some(tcp)) => {
