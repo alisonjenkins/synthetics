@@ -1,0 +1,17 @@
+# cargo-nextest is the canonical test runner (ADR 0010).
+# Run: `cargo nextest run`   CI uses the `ci` profile below.
+
+[profile.default]
+# Surface slow tests early; network/integration checks (T5/T6/T15) can hang a
+# bad target, so flag anything unexpectedly long. Does not fail the test.
+slow-timeout = { period = "30s", terminate-after = 3 }
+# Show output for failures only; keep local runs quiet.
+failure-output = "immediate"
+final-status-level = "fail"
+
+[profile.ci]
+# CI: no fail-fast, retry only genuinely flaky network tests a bounded amount.
+fail-fast = false
+retries = 2
+slow-timeout = { period = "60s", terminate-after = 2 }
+failure-output = "immediate-final"
