@@ -1,0 +1,31 @@
+{{- if .Values.worker.autoscaling.enabled }}
+# The worker fleet scales elastically: rendezvous sharding + heartbeat mean a
+# new pod joins the worker-set and picks up its share, and a removed pod's
+# checks reshard to survivors with minimal reshuffle (V27). Requires
+# metrics-server in the cluster.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "synthetics.fullname" . }}-worker
+  labels:
+    {{- include "synthetics.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "synthetics.fullname" . }}-worker
+  minReplicas: {{ .Values.worker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.worker.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.worker.autoscaling.targetCPUUtilizationPercentage }}
+  {{- with .Values.worker.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

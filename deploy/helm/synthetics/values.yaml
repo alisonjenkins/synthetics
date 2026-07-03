@@ -25,6 +25,15 @@ controlPlane:
 
 worker:
   replicas: 3
+  # Elastic scaling of the fleet. Rendezvous sharding reshards minimally on
+  # scale events (V27). Requires metrics-server; off by default so `just up`
+  # works on a bare KIND cluster.
+  autoscaling:
+    enabled: false
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    behavior: {}
   region: local
   logFormat: json
   pollSecs: 15

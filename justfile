@@ -32,6 +32,14 @@ kind-down:
     -kind delete cluster --name {{CLUSTER}}
     -docker rm -f kind-registry
 
+# Install metrics-server (needed for the worker HPA) with the KIND-friendly
+# insecure-kubelet-TLS patch, and wait for it.
+metrics-server:
+    kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+    kubectl -n kube-system patch deployment metrics-server --type=json \
+      -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+    kubectl -n kube-system rollout status deployment/metrics-server --timeout=120s
+
 # Install the CloudNativePG operator and wait for it.
 cnpg-install:
     kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v{{CNPG_VERSION}}/releases/cnpg-{{CNPG_VERSION}}.yaml

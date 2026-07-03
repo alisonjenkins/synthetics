@@ -6,7 +6,9 @@ metadata:
     {{- include "synthetics.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
 spec:
+  {{- if not .Values.worker.autoscaling.enabled }}
   replicas: {{ .Values.worker.replicas }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
