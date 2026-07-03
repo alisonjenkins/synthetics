@@ -21,7 +21,7 @@ use crate::config::{
 };
 use crate::sharding::{self, Worker};
 use crate::source::{ConfigSource, ConfigSourceError};
-use crate::wire::{ChecksResponse, HeartbeatRequest, ResolvedCheck, TargetSpec};
+use crate::wire::{ChecksResponse, HeartbeatRequest, ResolvedCheck, TargetSpec, VersionResponse};
 
 /// A [`ConfigSource`] backed by the control plane's worker API.
 pub struct ControlPlaneConfigSource {
@@ -30,7 +30,19 @@ pub struct ControlPlaneConfigSource {
     token: String,
     me: Worker,
     max_concurrency: usize,
-    cache: Mutex<Option<Config>>,
+    cache: Mutex<Option<CachedState>>,
+}
+
+/// The last successful poll's state, retained so a poll can be skipped when the
+/// config version is unchanged (#8) and so the last good config survives a
+/// control-plane outage (V29). The raw resolved checks are kept so ownership can
+/// be recomputed against a changed fleet without re-pulling `/checks`.
+#[derive(Clone)]
+struct CachedState {
+    version: u64,
+    raw_checks: Vec<ResolvedCheck>,
+    fleet: Vec<Worker>,
+    config: Config,
 }
 
 /// Minimal view of a worker from the control plane's `/workers` response.
@@ -115,46 +127,88 @@ impl ControlPlaneConfigSource {
     }
 
     async fn fetch(&self) -> Result<Config, ConfigSourceError> {
-        let checks: ChecksResponse = self.get_json("/checks").await?;
-        let fleet_raw: Vec<FleetWorker> = self.get_json("/workers").await?;
+        // Version-gate the poll (#8): a cheap /config/version check first, so the
+        // full /checks payload is pulled only when the config actually changed.
+        let version: VersionResponse = self.get_json("/config/version").await?;
+        let fleet = self.fetch_fleet().await?;
 
+        if let Some(state) = self.cached_state() {
+            if state.version == version.version {
+                if state.fleet == fleet {
+                    // Nothing moved — reuse the mapped config verbatim.
+                    return Ok(state.config);
+                }
+                // Config unchanged but the fleet changed: recompute ownership
+                // from the retained raw checks, no /checks transfer needed.
+                let config = self.build_config(&state.raw_checks, &fleet);
+                self.store_state(version.version, state.raw_checks, fleet, config.clone());
+                return Ok(config);
+            }
+        }
+
+        // Version moved (or first poll): pull the resolved checks.
+        let checks: ChecksResponse = self.get_json("/checks").await?;
+        let raw = checks.checks;
+        let config = self.build_config(&raw, &fleet);
+        self.store_state(version.version, raw, fleet, config.clone());
+        Ok(config)
+    }
+
+    /// Pull the live worker-set and make sure we are in it (our own heartbeat may
+    /// not have propagated to the set we just fetched).
+    async fn fetch_fleet(&self) -> Result<Vec<Worker>, ConfigSourceError> {
+        let fleet_raw: Vec<FleetWorker> = self.get_json("/workers").await?;
         let mut fleet: Vec<Worker> = fleet_raw
             .into_iter()
             .map(|w| Worker::new(w.id, w.region))
             .collect();
-        // Make sure we consider ourselves a candidate even before our own
-        // heartbeat has propagated to the worker-set we just fetched.
         if !fleet.iter().any(|w| w.id == self.me.id) {
             fleet.push(self.me.clone());
         }
+        Ok(fleet)
+    }
 
+    /// Map the resolved checks this worker owns (by rendezvous hashing over
+    /// `fleet`) into the flat runtime [`Config`].
+    fn build_config(&self, raw: &[ResolvedCheck], fleet: &[Worker]) -> Config {
         // No per-check locations yet; region filtering is a no-op until they are
         // carried on the wire.
         let no_locations: Vec<String> = Vec::new();
-        let endpoints: Vec<EndpointConfig> = checks
-            .checks
-            .into_iter()
-            .filter(|c| sharding::owns(&self.me, &c.id, &fleet, &no_locations))
+        let endpoints: Vec<EndpointConfig> = raw
+            .iter()
+            .filter(|c| sharding::owns(&self.me, &c.id, fleet, &no_locations))
+            .cloned()
             .filter_map(to_endpoint)
             .collect();
-
-        Ok(Config {
+        Config {
             max_concurrency: self.max_concurrency,
             endpoints,
-        })
+        }
     }
 
-    fn cached(&self) -> Option<Config> {
+    fn cached_state(&self) -> Option<CachedState> {
         match self.cache.lock() {
             Ok(g) => g.clone(),
             Err(poisoned) => poisoned.into_inner().clone(),
         }
     }
 
-    fn store_cache(&self, config: Config) {
+    fn store_state(
+        &self,
+        version: u64,
+        raw_checks: Vec<ResolvedCheck>,
+        fleet: Vec<Worker>,
+        config: Config,
+    ) {
+        let state = CachedState {
+            version,
+            raw_checks,
+            fleet,
+            config,
+        };
         match self.cache.lock() {
-            Ok(mut g) => *g = Some(config),
-            Err(poisoned) => *poisoned.into_inner() = Some(config),
+            Ok(mut g) => *g = Some(state),
+            Err(poisoned) => *poisoned.into_inner() = Some(state),
         }
     }
 }
@@ -162,15 +216,12 @@ impl ControlPlaneConfigSource {
 impl ConfigSource for ControlPlaneConfigSource {
     async fn load(&self) -> Result<Config, ConfigSourceError> {
         match self.fetch().await {
-            Ok(config) => {
-                self.store_cache(config.clone());
-                Ok(config)
-            }
-            Err(error) => match self.cached() {
+            Ok(config) => Ok(config),
+            Err(error) => match self.cached_state() {
                 // V29: keep running the last-known config on control-plane outage.
-                Some(config) => {
+                Some(state) => {
                     tracing::warn!(%error, "control plane unreachable; using cached config");
-                    Ok(config)
+                    Ok(state.config)
                 }
                 None => Err(error),
             },

@@ -125,6 +125,86 @@ async fn heartbeat_registers_worker() {
 }
 
 #[tokio::test]
+async fn skips_checks_pull_when_version_is_unchanged() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use axum::extract::State;
+    use axum::routing::{get, post};
+    use axum::{Json, Router};
+    use synthetics::wire::{ChecksResponse, ResolvedCheck, TargetSpec, TcpSpec, VersionResponse};
+    use synthetics_cp::model::Worker;
+
+    // A mock CP whose /config/version is fixed at 1 but whose /checks changes
+    // between calls. A version-gating worker must serve the first /checks result
+    // on the second poll (since the version did not move) and never call /checks
+    // twice.
+    #[derive(Clone, Default)]
+    struct Counter(Arc<AtomicUsize>);
+
+    async fn version() -> Json<VersionResponse> {
+        Json(VersionResponse { version: 1 })
+    }
+    async fn workers() -> Json<Vec<Worker>> {
+        Json(vec![Worker {
+            id: "w1".into(),
+            region: "eu-west".into(),
+            last_heartbeat_ms: 0,
+        }])
+    }
+    async fn checks(State(count): State<Counter>) -> Json<ChecksResponse> {
+        let n = count.0.fetch_add(1, Ordering::SeqCst);
+        let id = if n == 0 { "a" } else { "b" };
+        Json(ChecksResponse {
+            version: 1,
+            checks: vec![ResolvedCheck {
+                id: id.into(),
+                interval: Duration::from_secs(30),
+                timeout: Duration::from_secs(5),
+                tags: vec![],
+                target: TargetSpec::Tcp(TcpSpec {
+                    host: "h".into(),
+                    port: 1,
+                }),
+                assertions: vec![],
+                allow_internal: false,
+                retries: 0,
+                retry_backoff: Duration::ZERO,
+            }],
+        })
+    }
+    async fn heartbeat() -> axum::http::StatusCode {
+        axum::http::StatusCode::NO_CONTENT
+    }
+
+    let count = Counter::default();
+    let app = Router::new()
+        .route("/config/version", get(version))
+        .route("/workers", get(workers))
+        .route("/checks", get(checks))
+        .route("/workers/heartbeat", post(heartbeat))
+        .with_state(count.clone());
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let source = ControlPlaneConfigSource::new(format!("http://{addr}"), "w1", "w1", "eu-west");
+
+    let first = source.load().await.expect("first load");
+    assert_eq!(first.endpoints[0].id, "a");
+
+    let second = source.load().await.expect("second load");
+    assert_eq!(second.endpoints[0].id, "a", "stale-but-unchanged config kept");
+    assert_eq!(
+        count.0.load(Ordering::SeqCst),
+        1,
+        "/checks must be pulled once while the version is unchanged"
+    );
+}
+
+#[tokio::test]
 async fn heartbeat_times_out_against_a_hung_server() {
     use std::time::Instant;
     // A listener that accepts connections and holds them open forever without
