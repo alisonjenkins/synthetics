@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use synthetics::check::run_endpoint;
 use synthetics::config::{EndpointConfig, Target, TcpTarget};
-use synthetics::metric::Outcome;
+use synthetics::metric::{FailureKind, Outcome};
 use synthetics::net_guard::NetPolicy;
 use tokio::net::TcpListener;
 
@@ -30,6 +30,26 @@ fn tcp_endpoint(addr: SocketAddr, retries: u32, retry_backoff: Duration) -> Endp
         retries,
         retry_backoff,
     }
+}
+
+#[tokio::test]
+async fn does_not_retry_a_blocked_check() {
+    // A loopback target with an empty policy is refused by the SSRF guard. That
+    // is a permanent, deterministic denial — retrying it can never succeed and
+    // only wastes a cycle + backoff each interval, so it must not be retried.
+    let addr: SocketAddr = "127.0.0.1:9".parse().unwrap();
+    let ep = tcp_endpoint(addr, 3, Duration::from_secs(2));
+    let policy = NetPolicy::new::<&str>(&[]).unwrap();
+
+    let start = Instant::now();
+    let report = run_endpoint(&ep, &policy).await;
+
+    assert_eq!(report.failure, Some(FailureKind::Blocked));
+    assert!(
+        start.elapsed() < Duration::from_secs(1),
+        "a blocked check is permanent and must not be retried, took {:?}",
+        start.elapsed()
+    );
 }
 
 #[tokio::test]

@@ -37,7 +37,10 @@ pub async fn run_endpoint(endpoint: &EndpointConfig, policy: &NetPolicy) -> Chec
     let mut attempt: u32 = 0;
     loop {
         let report = run_once(endpoint, policy).await;
-        if report.outcome == Outcome::Success || attempt >= endpoint.retries {
+        if report.outcome == Outcome::Success
+            || attempt >= endpoint.retries
+            || !is_retryable(report.failure)
+        {
             return report;
         }
         attempt += 1;
@@ -50,6 +53,13 @@ pub async fn run_endpoint(endpoint: &EndpointConfig, policy: &NetPolicy) -> Chec
         );
         tokio::time::sleep(endpoint.retry_backoff).await;
     }
+}
+
+/// Whether a failure is worth retrying. Transient transport/protocol failures
+/// and flaky content (assertions) are retried; a `Blocked` result is a permanent
+/// SSRF-policy denial that will never succeed on retry, so it is not (#6/F1).
+fn is_retryable(failure: Option<FailureKind>) -> bool {
+    !matches!(failure, Some(FailureKind::Blocked))
 }
 
 /// One attempt at an endpoint's check (no retries): dispatch on the target
