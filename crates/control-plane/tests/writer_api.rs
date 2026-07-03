@@ -74,6 +74,7 @@ fn tcp_endpoint(id: &str, env: &str, port: u16) -> Vec<u8> {
         timeout: None,
         tags: vec![],
         assertions: vec![],
+        allow_internal: false,
     };
     serde_json::to_vec(&ep).unwrap()
 }
@@ -195,6 +196,7 @@ async fn invalid_http_url_is_rejected() {
         timeout: None,
         tags: vec![],
         assertions: vec![],
+        allow_internal: false,
     };
     let (status, body) = send(
         &app,

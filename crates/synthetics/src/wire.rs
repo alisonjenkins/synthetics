@@ -30,6 +30,10 @@ pub struct ResolvedCheck {
     pub target: TargetSpec,
     /// Assertions to evaluate.
     pub assertions: Vec<Assertion>,
+    /// Opt-in to reach an internal/private resolved address (SSRF guard, #5).
+    /// The worker still requires the address to be in its operator allowlist.
+    #[serde(default)]
+    pub allow_internal: bool,
 }
 
 /// A protocol-specific target specification (as authored / resolved).

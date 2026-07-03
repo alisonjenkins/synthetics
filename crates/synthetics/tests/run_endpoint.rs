@@ -45,6 +45,7 @@ fn http_endpoint(id: &str, url: &str, assertions: Vec<Assertion>) -> EndpointCon
             allow_insecure: false,
         }),
         assertions,
+        allow_internal: false,
     }
 }
 
@@ -135,6 +136,7 @@ async fn tcp_success() {
             port: addr.port(),
         }),
         assertions: vec![],
+        allow_internal: false,
     };
 
     let report = run_endpoint(&ep).await;
@@ -162,6 +164,7 @@ async fn tcp_connect_refused_is_a_failure() {
             port: addr.port(),
         }),
         assertions: vec![],
+        allow_internal: false,
     };
 
     let report = run_endpoint(&ep).await;

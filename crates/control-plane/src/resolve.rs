@@ -86,6 +86,7 @@ pub fn resolve_one(
         tags,
         target: endpoint.target.clone(),
         assertions: endpoint.assertions.clone(),
+        allow_internal: endpoint.allow_internal,
     })
 }
 

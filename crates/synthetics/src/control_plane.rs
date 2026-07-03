@@ -218,5 +218,6 @@ fn to_endpoint(check: ResolvedCheck) -> Option<EndpointConfig> {
         tags: check.tags,
         target,
         assertions: check.assertions,
+        allow_internal: check.allow_internal,
     })
 }

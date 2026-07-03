@@ -50,6 +50,7 @@ async fn exercise<S: ConfigStore>(store: &S) {
             equals: Some(200),
             in_range: None,
         }],
+        allow_internal: false,
     };
     store.upsert_endpoint(ep.clone()).await.unwrap();
     assert_eq!(

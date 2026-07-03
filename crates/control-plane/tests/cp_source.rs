@@ -56,6 +56,7 @@ async fn seed(store: &MemoryStore) {
             timeout: None,
             tags: vec![],
             assertions: vec![],
+            allow_internal: false,
         })
         .await
         .unwrap();

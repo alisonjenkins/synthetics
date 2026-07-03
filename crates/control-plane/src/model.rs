@@ -66,6 +66,10 @@ pub struct Endpoint {
     /// Assertions evaluated each check.
     #[serde(default)]
     pub assertions: Vec<Assertion>,
+    /// Opt-in to let the worker connect to an internal/private address for this
+    /// endpoint (SSRF guard, #5). Still gated by the worker's operator allowlist.
+    #[serde(default)]
+    pub allow_internal: bool,
 }
 
 // Target specs are the CP↔worker wire types, defined once in the worker crate

@@ -112,6 +112,7 @@ async fn orchestrator_produces_ws_report() {
         tags: vec![],
         target: Target::Ws(ws_target(&format!("ws://{addr}/"))),
         assertions: vec![],
+        allow_internal: false,
     };
 
     let report = run_endpoint(&ep).await;

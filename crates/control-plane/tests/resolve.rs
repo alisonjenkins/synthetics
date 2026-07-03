@@ -33,6 +33,7 @@ fn tcp_endpoint(id: &str, environment: &str, interval: Option<Duration>) -> Endp
         timeout: None,
         tags: vec![],
         assertions: vec![],
+        allow_internal: false,
     }
 }
 

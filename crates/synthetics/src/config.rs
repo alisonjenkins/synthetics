@@ -43,6 +43,9 @@ pub struct EndpointConfig {
     pub target: Target,
     /// Assertions evaluated each check; any failure = check fail (V18).
     pub assertions: Vec<Assertion>,
+    /// Opt-in to connect to an internal/private resolved address (SSRF guard,
+    /// #5). Enforced at connect time against the worker's operator allowlist.
+    pub allow_internal: bool,
 }
 
 /// The protocol-specific target of a check.
@@ -279,6 +282,8 @@ mod raw {
         pub timeout: Option<Duration>,
         #[serde(default)]
         pub tags: Vec<String>,
+        #[serde(default)]
+        pub allow_internal: bool,
         pub http: Option<RawHttp>,
         pub tcp: Option<RawTcp>,
         pub ws: Option<RawWs>,
@@ -355,6 +360,7 @@ fn build_and_validate(raw: raw::RawConfig) -> Result<Config, ConfigValidateError
             tags: ep.tags,
             target,
             assertions: ep.assertions,
+            allow_internal: ep.allow_internal,
         });
     }
 

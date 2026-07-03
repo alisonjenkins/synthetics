@@ -56,6 +56,7 @@ async fn seeded_app() -> Router {
             timeout: None,
             tags: vec![],
             assertions: vec![],
+            allow_internal: false,
         })
         .await
         .unwrap();

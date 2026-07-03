@@ -22,6 +22,7 @@ fn tcp_endpoint(id: &str, addr: std::net::SocketAddr, interval: Duration) -> Arc
             port: addr.port(),
         }),
         assertions: vec![],
+        allow_internal: false,
     })
 }
 

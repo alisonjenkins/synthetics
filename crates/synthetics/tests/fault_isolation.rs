@@ -51,6 +51,7 @@ async fn healthy_endpoint_fires_on_schedule_despite_hung_neighbor() {
             port: healthy_addr.port(),
         }),
         assertions: vec![],
+        allow_internal: false,
     });
     let hung = Arc::new(EndpointConfig {
         id: "hung".to_string(),
@@ -66,6 +67,7 @@ async fn healthy_endpoint_fires_on_schedule_despite_hung_neighbor() {
             allow_insecure: false,
         }),
         assertions: vec![],
+        allow_internal: false,
     });
 
     let sink = Arc::new(MockSink::new());
