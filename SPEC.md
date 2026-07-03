@@ -35,6 +35,36 @@ check. Replace pricey Datadog synthetics.
 - Fault isolation. Purpose = monitor many possibly-unhealthy systems. Slow,
   hung, or dead target must never delay, block, or fail checks of other
   targets. Failure is the expected case, not the exception.
+- Horizontal scale to a worker fleet (5k–50k+ checks). Checks sharded across
+  workers by rendezvous hash over a live heartbeat worker-set; no
+  coordinator; rebalance prefers overlap over gap (at-least-once).
+- Central config via a control plane. Authoring hierarchy
+  (org?→product→customer→environment→endpoint) stored behind a `ConfigStore`
+  trait (Postgres first). Control plane resolves inheritance server-side and
+  serves flat, materialized checks. Config = source of truth; results never
+  stored (they go to the sink → Datadog).
+- Config authored via Terraform/OpenTofu. Provider deferred; CP API contract
+  specced now. Writers auth via OIDC (scoped per-product); workers auth via
+  mTLS (read-only). Config change reaches workers < 5s.
+- TF provider = great UX: generated docs, actionable error messages on
+  mistakes, validation at plan time where possible (typed schema +
+  validators). CP re-validates every write authoritatively (never trust
+  client). Provider + CP share one rule set.
+- Worker consumes a flat resolved-check list via a `ConfigSource` trait
+  (File for dev/single-node/tests; ControlPlane for fleet). Same runtime,
+  swappable source. Worker caches config, survives control-plane outage.
+- Static dispatch on runtime/hot paths. No `dyn` trait objects or
+  `async_trait` boxing on check/emit/schedule paths — use RPITIT + `Send`,
+  generics/monomorphization, `Arc<Concrete>`, enum-dispatch for
+  runtime-selected backends. `dyn`/boxing only in cold paths (startup, error
+  `source`).
+- Rust docs done well: rustdoc on every public item (`missing_docs` lint
+  on, `cargo doc` clean), doc examples where useful. Repo `README.md` with
+  overview + quickstart + an SVG architecture diagram.
+- Easy to change. Seams on KNOWN axes of variation (check protocols,
+  assertion types, sinks, config sources, storage backends): a new variant =
+  additive, localized, compiler-guided (exhaustive match / trait impl). No
+  speculative abstraction — no seam without a named axis (anti-gold-plating).
 - WebSocket = future, design must not block it.
 
 ## §I — external surfaces
@@ -55,6 +85,20 @@ check. Replace pricey Datadog synthetics.
 - `I.ddagent` — local Datadog agent DogStatsD socket. First `I.sink` impl.
 - `I.log` — `tracing` subscriber: structured JSON events + spans to
   stdout/collector.
+- `I.configsource` — `ConfigSource` trait feeding the worker: `load()` +
+  `watch()` a stream of flat resolved checks. Impls: File (TOML, wraps
+  `I.config`), ControlPlane (CP client). Static dispatch.
+- `I.store` — `ConfigStore` trait behind the control plane: hierarchy CRUD,
+  resolve-effective-checks, worker heartbeat upsert + list-live, config
+  version + generic change-signal. Impls: Postgres (NOTIFY-backed), in-memory
+  (tests), maybe SQLite (dev). No SQL outside the impl.
+- `I.cp` — control-plane API. Writer side (OIDC, per-product): hierarchy
+  CRUD. Worker side (mTLS, read-only): pull resolved checks + worker-set,
+  watch change-feed (< 5s), version stamp. Contract specced for a future TF
+  provider.
+- `I.membership` — worker registry: heartbeat/lease; live worker-set drives
+  rendezvous ownership.
+- `I.auth` — OIDC for writers (scoped per-product), mTLS for workers.
 
 ## §V — invariants
 
@@ -112,6 +156,45 @@ check. Replace pricey Datadog synthetics.
 - V23 — every dependency license on `cargo-deny` allow-list (permissive
   only; copyleft/toxic denied by omission). CI fails on unapproved license,
   RUSTSEC advisory, unknown source, or wildcard dep.
+- V24 — worker runtime consumes a flat resolved-check list via `ConfigSource`
+  (`I.configsource`). Behavior identical across File and ControlPlane sources.
+- V25 — control plane resolves hierarchy inheritance server-side; workers
+  never see the hierarchy — only materialized flat checks + tags.
+- V26 — check ownership by rendezvous hash over the live worker-set; each
+  worker selects its own checks independently. No coordinator.
+- V27 — rebalance on membership change prefers overlap over gap: no check
+  ever unowned (at-least-once). Brief duplicate runs acceptable.
+- V28 — config change propagates to workers < 5s (change-signal + version
+  stamp). Reconfigure still misses no check (V3 at fleet scale).
+- V29 — control-plane/store outage: worker keeps running last-known cached
+  config indefinitely; never stops checking. Membership frozen during outage
+  (documented worker-death gap risk).
+- V30 — store holds config + fleet membership only. Never check results /
+  time-series (results → sink → Datadog).
+- V31 — writes authenticated via OIDC, scoped per-product (identity may
+  mutate only its product subtree). Workers authenticate via mTLS, read-only.
+- V32 — check identity is hierarchical + stable
+  (product/customer/environment/endpoint), unique. Serves as rendezvous key
+  and reload-diff key (extends V3's stable-key need).
+- V33 — region-aware: checks carry location(s), workers carry region; a check
+  runs only on workers in its location(s).
+- V34 — control plane depends only on `ConfigStore` (`I.store`); no
+  backend-specific code (SQL, `LISTEN/NOTIFY`) outside the impl. Swappable.
+- V35 — runtime/hot-path abstractions are static-dispatch (RPITIT+`Send`,
+  generics, `Arc<Concrete>`, enum-dispatch). No `dyn`/`async_trait` on
+  check/emit/schedule paths. `dyn`/boxing only in cold paths.
+- V36 — extension is localized + compiler-guided: adding a protocol /
+  assertion / sink / source / store touches only its module + the enum/trait
+  def; exhaustive matches + trait impls flag every site needing update. Seams
+  on known axes only (no speculative abstraction).
+- V37 — validation defense-in-depth: TF provider validates at plan time
+  where possible (typed schema + custom validators) with actionable,
+  field-scoped messages; CP independently validates every write and rejects
+  invalid config with clear field-scoped errors (never trusts the client).
+  One shared rule set drives both. Provider ships generated docs.
+- V38 — every public Rust item documented (`missing_docs` lint on; CI
+  `-D warnings` enforces; `cargo doc` builds clean). Repo `README.md`
+  present with overview, quickstart, and an SVG architecture diagram.
 
 ## §T — tasks
 
@@ -121,8 +204,8 @@ check. Replace pricey Datadog synthetics.
 | T2 | x | config model + parse (endpoints, intervals, params) | I.config,V1,V11 |
 | T3 | x | `MetricSink` trait + mock/no-op sink for tests | I.sink,V2,V9 |
 | T4 | x | Datadog agent sink (DogStatsD UDP/UDS) | I.ddagent,V2 |
-| T5 | . | HTTP check executor + per-fn error enum + full DD-parity timings + timeouts | I.http,V1,V9,V10,V17,V19 |
-| T6 | . | TCP check executor + per-fn error enum + connect timing + timeout | I.tcp,V1,V9,V10,V17,V19 |
+| T5 | . | HTTP check executor + per-fn error enum + full DD-parity timings + timeouts | I.http,V1,V9,V10,V17,V19,V35,V36 |
+| T6 | . | TCP check executor + per-fn error enum + connect timing + timeout | I.tcp,V1,V9,V10,V17,V19,V35,V36 |
 | T7 | . | scheduler: per-endpoint interval, bounded concurrency, fault isolation | V5,V8,V20,V21 |
 | T15 | . | fault-isolation harness: timeout, panic catch, no-starvation test | V19,V20,V21 |
 | T8 | . | hot reload: watch/signal, diff config, no missed check | I.config,I.ctl,V3,V4,V11 |
@@ -131,7 +214,19 @@ check. Replace pricey Datadog synthetics.
 | T12 | . | `tracing` subscriber: JSON structured logs + span wiring | I.log,V14 |
 | T13 | . | benchmarks for hot paths (SIMD vs scalar, scheduler, check) | V16,V6,V15 |
 | T14 | . | assertion engine (status/header/latency/cert-age + body contains/regex/sha256) | I.assert,V18,V9,V22 |
-| T11 | . | WebSocket check (future) | I.ws,V1,V9 |
+| T11 | . | WebSocket check (future) | I.ws,V1,V9,V35,V36 |
+| T16 | . | refactor `MetricSink` to static dispatch (RPITIT+Send, drop async_trait; enum-dispatch deferred to 2nd backend per V36) | V35,V36 |
+| T17 | . | `Check` trait (static dispatch) unifying protocol executors | V35,V36 |
+| T18 | . | `ConfigSource` trait + FileConfigSource (wraps T2) + scheduler/reload consume it | I.configsource,V24,V35 |
+| T19 | . | rendezvous-hash ownership + worker identity + region/location match | V26,V27,V32,V33 |
+| T20 | . | worker heartbeat client + membership consumption | I.membership,V26 |
+| T21 | . | ControlPlaneConfigSource: CP client + change-feed + local cache + outage survival | I.cp,I.configsource,V28,V29,V24 |
+| T22 | . | `ConfigStore` trait + in-memory impl + Postgres impl + migrations | I.store,V30,V34,V35 |
+| T23 | . | CP inheritance resolver (hierarchy → flat resolved checks) | I.store,V25 |
+| T24 | . | CP writer API (OIDC, per-product scope, hierarchy CRUD) + write validation | I.cp,I.auth,V31,V32,V37 |
+| T25 | . | CP worker API (mTLS, read + change-feed/NOTIFY, version stamp) | I.cp,I.auth,V28,V33 |
+| T26 | . | CP API contract doc (OpenAPI) + validation rules for future TF provider | I.cp,V37 |
+| T27 | . | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
 
 ## §B — bugs
 

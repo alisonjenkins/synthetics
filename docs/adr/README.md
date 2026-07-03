@@ -21,3 +21,13 @@ Format: [MADR](https://adr.github.io/madr/)-lite.
 | [0011](0011-fault-isolation.md) | Fault isolation between targets (timeouts, no starvation, panic isolation) | Accepted |
 | [0012](0012-content-assertions-in-daemon.md) | Content assertions in-daemon; bodies never leave the process | Accepted |
 | [0013](0013-supply-chain-cargo-deny.md) | Supply-chain gating with cargo-deny (licenses, advisories, sources) | Accepted |
+| [0014](0014-control-plane-config-source-of-truth.md) | Control plane + Postgres as config source of truth; results still flow via Datadog | Accepted |
+| [0015](0015-configsource-abstraction.md) | `ConfigSource` trait; flat resolved-check runtime model (file or control-plane) | Accepted |
+| [0016](0016-rendezvous-sharding.md) | Rendezvous-hash sharding, no coordinator; overlap-over-gap rebalance | Accepted |
+| [0017](0017-hierarchy-model-and-resolution.md) | Generic hierarchy model with CP-side inheritance resolution | Accepted |
+| [0018](0018-auth-and-propagation.md) | OIDC for writers, mTLS for workers; sub-5s config propagation | Accepted |
+| [0019](0019-tf-provider-strategy.md) | Terraform/OpenTofu provider strategy — separate resources per check type | Accepted |
+| [0020](0020-configstore-abstraction.md) | `ConfigStore` trait; Postgres impl first (LISTEN/NOTIFY change-signal) | Accepted |
+| [0021](0021-static-dispatch-policy.md) | Static dispatch on runtime/hot paths (no `dyn`/`async_trait`) | Accepted |
+| [0022](0022-design-for-change.md) | Design for change — seams on known axes only, anti-gold-plating | Accepted |
+| [0023](0023-validation-defense-in-depth.md) | Validation defense-in-depth (plan-time provider + authoritative CP) | Accepted |
