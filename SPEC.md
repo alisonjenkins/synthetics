@@ -244,7 +244,7 @@ check. Replace pricey Datadog synthetics.
 | T26 | x | CP API contract doc (OpenAPI) + validation rules for future TF provider | I.cp,V37 |
 | T27 | x | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
 | T30 | x | control-plane server binary (PgStore + writer/worker routers + serve) | I.cp,I.store,I.auth |
-| T31 | . | worker daemon control-plane mode (ControlPlaneConfigSource + heartbeat + poll reload) | I.configsource,I.membership,V28 |
+| T31 | x | worker daemon control-plane mode (ControlPlaneConfigSource + heartbeat + poll reload) | I.configsource,I.membership,V28 |
 | T28 | . | Helm chart (worker + CP + CNPG) + KIND cluster + local registry | I.cp,I.store |
 | T32 | . | nix flake: devshell + packages (both binaries) + nix-built containers | (build/deploy) |
 | T33 | . | just + Tilt stand up local stack (kind+registry+cnpg+images+helm) | (build/deploy) |

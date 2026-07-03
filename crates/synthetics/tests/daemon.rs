@@ -103,3 +103,25 @@ fn starts_runs_and_shuts_down_on_sigterm() {
         "expected startup log, got: {stdout}"
     );
 }
+
+#[test]
+fn control_plane_mode_is_fatal_when_cp_unreachable() {
+    // Initial config load from an unreachable control plane is fatal (T31).
+    let status = Command::new(BIN)
+        .args([
+            "--control-plane",
+            "http://127.0.0.1:1",
+            "--worker-id",
+            "w-test",
+            "--region",
+            "eu",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(
+        !status.success(),
+        "unreachable CP at startup should exit non-zero"
+    );
+}

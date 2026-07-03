@@ -30,6 +30,14 @@ pub trait ConfigSource: Send + Sync {
     fn load(&self) -> impl Future<Output = Result<Config, ConfigSourceError>> + Send;
 }
 
+/// Sharing a source (e.g. between the [`Worker`](crate::worker::Worker) and a
+/// heartbeat loop) is just an `Arc` — it forwards to the inner source.
+impl<T: ConfigSource> ConfigSource for std::sync::Arc<T> {
+    fn load(&self) -> impl Future<Output = Result<Config, ConfigSourceError>> + Send {
+        (**self).load()
+    }
+}
+
 /// A [`ConfigSource`] backed by a local TOML file.
 #[derive(Debug, Clone)]
 pub struct FileConfigSource {

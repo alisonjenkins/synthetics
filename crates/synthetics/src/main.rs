@@ -1,15 +1,20 @@
-//! Synthetics daemon entrypoint (T10).
+//! Synthetics daemon entrypoint (T10, T31).
 //!
 //! Wires a config source, a metric sink, and the scheduler together, then runs
-//! until a shutdown signal, reloading config on SIGHUP without missing a check
-//! (V3, V4). Reconfiguring live requires no restart.
+//! until a shutdown signal, reloading config without missing a check (V3, V4).
+//! Two modes:
+//!   * **file** (default) — config from a local TOML, reload on SIGHUP;
+//!   * **control-plane** (`--control-plane <url>`) — pull owned checks from the
+//!     control plane, heartbeat membership, and poll for config changes.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
+use synthetics::control_plane::ControlPlaneConfigSource;
 use synthetics::scheduler::Scheduler;
 use synthetics::sink::dogstatsd::DogStatsdSink;
 use synthetics::source::{ConfigSource, FileConfigSource};
@@ -22,13 +27,37 @@ use tokio::sync::{mpsc, watch};
 #[derive(Debug, Parser)]
 #[command(name = "synthetics", version, about)]
 struct Args {
-    /// Path to the TOML config file.
+    /// Path to the TOML config file (file mode).
     #[arg(long, default_value = "synthetics.toml")]
     config: PathBuf,
 
     /// Address of the local Datadog agent's DogStatsD UDP socket.
     #[arg(long, default_value = "127.0.0.1:8125")]
     dogstatsd: SocketAddr,
+
+    /// Control-plane base URL. When set, run in control-plane mode.
+    #[arg(long)]
+    control_plane: Option<String>,
+
+    /// This worker's id (control-plane mode).
+    #[arg(long, env = "HOSTNAME", default_value = "worker")]
+    worker_id: String,
+
+    /// This worker's region (control-plane mode).
+    #[arg(long, default_value = "default")]
+    region: String,
+
+    /// Worker credential presented to the control plane (control-plane mode).
+    #[arg(long, env = "CP_TOKEN", default_value = "")]
+    cp_token: String,
+
+    /// Seconds between config polls (control-plane mode).
+    #[arg(long, default_value_t = 15)]
+    poll_secs: u64,
+
+    /// Seconds between heartbeats (control-plane mode).
+    #[arg(long, default_value_t = 10)]
+    heartbeat_secs: u64,
 
     /// Log output format.
     #[arg(long, value_enum, default_value_t = LogFmt::Json)]
@@ -65,34 +94,92 @@ async fn main() -> ExitCode {
 }
 
 async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
-    let source = FileConfigSource::new(&args.config);
-
-    // Initial load is fatal on error — the daemon cannot start with no config.
-    let initial = source.load().await?;
-    let max_concurrency = initial.max_concurrency;
-    let endpoints = initial.endpoints;
-
     let sink = Arc::new(DogStatsdSink::udp(args.dogstatsd).await?);
-    let mut scheduler = Scheduler::new(sink, max_concurrency);
-    scheduler.reconcile(endpoints.into_iter().map(Arc::new).collect());
 
+    let (reload_tx, reload_rx) = mpsc::unbounded_channel();
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    spawn_signal_handlers(reload_tx.clone(), shutdown_tx)?;
+
+    match &args.control_plane {
+        Some(url) => {
+            let source = Arc::new(ControlPlaneConfigSource::new(
+                url.clone(),
+                args.cp_token.clone(),
+                args.worker_id.clone(),
+                args.region.clone(),
+            ));
+            spawn_heartbeat(
+                Arc::clone(&source),
+                Duration::from_secs(args.heartbeat_secs),
+            );
+            spawn_poll(reload_tx, Duration::from_secs(args.poll_secs));
+            tracing::info!(
+                control_plane = %url,
+                worker_id = %args.worker_id,
+                region = %args.region,
+                "synthetics daemon starting (control-plane mode)",
+            );
+            serve(source, sink, reload_rx, shutdown_rx).await
+        }
+        None => {
+            tracing::info!(config = %args.config.display(), "synthetics daemon starting (file mode)");
+            serve(
+                FileConfigSource::new(&args.config),
+                sink,
+                reload_rx,
+                shutdown_rx,
+            )
+            .await
+        }
+    }
+}
+
+/// Load the initial config, start the scheduler, and run the worker until
+/// shutdown. Generic over the source so both modes share one path.
+async fn serve<S: ConfigSource + 'static>(
+    source: S,
+    sink: Arc<DogStatsdSink>,
+    reload_rx: mpsc::UnboundedReceiver<()>,
+    shutdown_rx: watch::Receiver<bool>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Initial load is fatal — the daemon cannot start with no config.
+    let initial = source.load().await?;
+    let mut scheduler = Scheduler::new(sink, initial.max_concurrency);
+    scheduler.reconcile(initial.endpoints.into_iter().map(Arc::new).collect());
     tracing::info!(
-        config = %args.config.display(),
-        dogstatsd = %args.dogstatsd,
         endpoints = scheduler.running_ids().len(),
-        "synthetics daemon started",
+        "synthetics daemon started"
     );
 
     let worker = Worker::new(source, scheduler);
-
-    // Signal wiring: SIGHUP -> reload, SIGTERM/SIGINT -> shutdown.
-    let (reload_tx, reload_rx) = mpsc::unbounded_channel();
-    let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    spawn_signal_handlers(reload_tx, shutdown_tx)?;
-
     worker.run(reload_rx, shutdown_rx).await;
     tracing::info!("synthetics daemon stopped");
     Ok(())
+}
+
+fn spawn_heartbeat(source: Arc<ControlPlaneConfigSource>, period: Duration) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(period);
+        loop {
+            ticker.tick().await;
+            if let Err(error) = source.heartbeat().await {
+                tracing::warn!(%error, "heartbeat to control plane failed");
+            }
+        }
+    });
+}
+
+fn spawn_poll(reload_tx: mpsc::UnboundedSender<()>, period: Duration) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(period);
+        ticker.tick().await; // consume the immediate first tick
+        loop {
+            ticker.tick().await;
+            if reload_tx.send(()).is_err() {
+                break;
+            }
+        }
+    });
 }
 
 fn spawn_signal_handlers(
