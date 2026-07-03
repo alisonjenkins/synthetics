@@ -59,6 +59,12 @@ struct Args {
     #[arg(long, default_value_t = 10)]
     heartbeat_secs: u64,
 
+    /// Path to an on-disk config cache (control-plane mode). When set, each good
+    /// config is mirrored here so a freshly started worker can begin serving
+    /// during a control-plane outage (#14).
+    #[arg(long)]
+    config_cache: Option<PathBuf>,
+
     /// Log output format.
     #[arg(long, value_enum, default_value_t = LogFmt::Json)]
     log_format: LogFmt,
@@ -113,12 +119,16 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 
     match &args.control_plane {
         Some(url) => {
-            let source = Arc::new(ControlPlaneConfigSource::new(
+            let mut source = ControlPlaneConfigSource::new(
                 url.clone(),
                 args.cp_token.clone(),
                 args.worker_id.clone(),
                 args.region.clone(),
-            ));
+            );
+            if let Some(path) = &args.config_cache {
+                source = source.with_cache_path(path.clone());
+            }
+            let source = Arc::new(source);
             spawn_heartbeat(
                 Arc::clone(&source),
                 Duration::from_secs(args.heartbeat_secs),

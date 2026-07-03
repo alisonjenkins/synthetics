@@ -9,11 +9,12 @@
 //! stopping (V29). [`ControlPlaneConfigSource::heartbeat`] registers this worker
 //! with the control plane (T20).
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::config::{
@@ -31,6 +32,18 @@ pub struct ControlPlaneConfigSource {
     me: Worker,
     max_concurrency: usize,
     cache: Mutex<Option<CachedState>>,
+    /// Optional on-disk mirror of the last good config, so a freshly started
+    /// worker can begin serving during a control-plane outage (V29, #14).
+    cache_path: Option<PathBuf>,
+}
+
+/// The serializable subset of [`CachedState`] written to disk. The mapped config
+/// is rebuilt from these on load, so only wire-serializable data is persisted.
+#[derive(Serialize, Deserialize)]
+struct PersistedState {
+    version: u64,
+    raw_checks: Vec<ResolvedCheck>,
+    fleet: Vec<Worker>,
 }
 
 /// The last successful poll's state, retained so a poll can be skipped when the
@@ -85,6 +98,7 @@ impl ControlPlaneConfigSource {
             me: Worker::new(worker_id, region),
             max_concurrency: DEFAULT_MAX_CONCURRENCY,
             cache: Mutex::new(None),
+            cache_path: None,
         }
     }
 
@@ -93,6 +107,14 @@ impl ControlPlaneConfigSource {
     #[must_use]
     pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
         self.client = build_client(timeout);
+        self
+    }
+
+    /// Persist each good config to `path` and, on a cold start during a
+    /// control-plane outage, load the last good config from it (#14).
+    #[must_use]
+    pub fn with_cache_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.cache_path = Some(path.into());
         self
     }
 
@@ -200,6 +222,7 @@ impl ControlPlaneConfigSource {
         fleet: Vec<Worker>,
         config: Config,
     ) {
+        self.persist(version, &raw_checks, &fleet);
         let state = CachedState {
             version,
             raw_checks,
@@ -210,6 +233,41 @@ impl ControlPlaneConfigSource {
             Ok(mut g) => *g = Some(state),
             Err(poisoned) => *poisoned.into_inner() = Some(state),
         }
+    }
+
+    /// Best-effort write of the last good config to disk (#14). Failures are
+    /// logged, not fatal — the daemon keeps running on the in-memory state.
+    fn persist(&self, version: u64, raw_checks: &[ResolvedCheck], fleet: &[Worker]) {
+        let Some(path) = &self.cache_path else {
+            return;
+        };
+        let state = PersistedState {
+            version,
+            raw_checks: raw_checks.to_vec(),
+            fleet: fleet.to_vec(),
+        };
+        // Write to a temp sibling then rename so a reader never sees a torn file.
+        let tmp = path.with_extension("tmp");
+        let result = serde_json::to_vec(&state)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| std::fs::write(&tmp, bytes).map_err(|e| e.to_string()))
+            .and_then(|()| std::fs::rename(&tmp, path).map_err(|e| e.to_string()));
+        if let Err(error) = result {
+            tracing::warn!(%error, path = %path.display(), "failed to persist config cache");
+        }
+    }
+
+    /// Load the last good config from disk, rebuilding the mapped config from the
+    /// persisted raw checks + fleet. `None` if no cache path or the file is
+    /// missing/unreadable/corrupt.
+    fn load_from_disk(&self) -> Option<Config> {
+        let path = self.cache_path.as_ref()?;
+        let bytes = std::fs::read(path).ok()?;
+        let state: PersistedState = serde_json::from_slice(&bytes).ok()?;
+        let config = self.build_config(&state.raw_checks, &state.fleet);
+        // Prime the in-memory cache so subsequent polls have a baseline.
+        self.store_state(state.version, state.raw_checks, state.fleet, config.clone());
+        Some(config)
     }
 }
 
@@ -223,7 +281,18 @@ impl ConfigSource for ControlPlaneConfigSource {
                     tracing::warn!(%error, "control plane unreachable; using cached config");
                     Ok(state.config)
                 }
-                None => Err(error),
+                // Cold start during an outage: fall back to the on-disk cache so
+                // a fresh worker can still begin serving (#14).
+                None => match self.load_from_disk() {
+                    Some(config) => {
+                        tracing::warn!(
+                            %error,
+                            "control plane unreachable on startup; using on-disk config cache"
+                        );
+                        Ok(config)
+                    }
+                    None => Err(error),
+                },
             },
         }
     }

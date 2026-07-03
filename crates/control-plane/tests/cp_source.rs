@@ -125,6 +125,41 @@ async fn heartbeat_registers_worker() {
 }
 
 #[tokio::test]
+async fn fresh_worker_starts_from_disk_cache_during_cp_outage() {
+    let (base, _store, shutdown) = spawn_cp().await;
+
+    // A unique cache file (derive uniqueness from the ephemeral CP port so
+    // parallel test runs don't collide).
+    let port = base.rsplit(':').next().unwrap();
+    let cache = std::env::temp_dir().join(format!("synthetics-cache-{port}.json"));
+    let _ = std::fs::remove_file(&cache);
+
+    // Worker A loads from the live CP, which writes the disk cache.
+    let source_a = ControlPlaneConfigSource::new(base.clone(), "w1", "w1", "eu-west")
+        .with_cache_path(cache.clone());
+    let first = source_a.load().await.expect("initial load from live CP");
+    assert_eq!(first.endpoints.len(), 1);
+    assert!(cache.exists(), "load should have written the disk cache");
+
+    // Take the CP down.
+    let _ = shutdown.send(());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Worker B is brand new (empty in-memory cache) and the CP is unreachable.
+    // It must still start by reading the on-disk cache.
+    let source_b = ControlPlaneConfigSource::new(base, "w1", "w1", "eu-west")
+        .with_cache_path(cache.clone());
+    let cold = source_b
+        .load()
+        .await
+        .expect("cold start must fall back to the disk cache");
+    assert_eq!(cold.endpoints.len(), 1);
+    assert_eq!(cold.endpoints[0].id, "web/prod/db");
+
+    let _ = std::fs::remove_file(&cache);
+}
+
+#[tokio::test]
 async fn skips_checks_pull_when_version_is_unchanged() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 

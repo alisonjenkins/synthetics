@@ -13,7 +13,7 @@
 //! worker in the fleet computes identical weights.
 
 /// A fleet member for ownership purposes: a stable id and its region.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Worker {
     /// Stable worker id (the rendezvous key input).
     pub id: String,
