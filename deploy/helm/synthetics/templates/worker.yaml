@@ -36,6 +36,10 @@ spec:
             - {{ .Values.worker.pollSecs | quote }}
             - --heartbeat-secs
             - {{ .Values.worker.heartbeatSecs | quote }}
+            # On-disk config cache: lets a crash-restarted worker start serving
+            # during a control-plane outage (survives container restarts).
+            - --config-cache
+            - /var/cache/synthetics/config.json
             {{- range .Values.worker.allowInternalCidrs }}
             # SSRF guard: internal CIDRs an allow_internal endpoint may reach.
             - --allow-internal-cidr
@@ -57,3 +61,11 @@ spec:
                   key: worker-cp-token
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            - name: config-cache
+              mountPath: /var/cache/synthetics
+      volumes:
+        # Ephemeral per-pod cache; survives container restarts within the pod,
+        # which is the crash-loop-during-outage case the disk cache targets.
+        - name: config-cache
+          emptyDir: {}
