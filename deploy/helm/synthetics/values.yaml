@@ -12,10 +12,10 @@ image:
     tag: latest
 
 controlPlane:
-  # Run >= 2 replicas for zero-downtime upgrades. The data plane is unaffected
-  # by CP downtime regardless (workers run cached config, V29) — this is only for
-  # uninterrupted API availability.
-  replicas: 1
+  # Two replicas by default: zero-downtime rolling upgrades and the CP PDB both
+  # require >= 2. The data plane is unaffected by CP downtime regardless (workers
+  # run cached config, V29) — HA is only for uninterrupted API availability.
+  replicas: 2
   # Bring a new pod to Ready before removing an old one (needs replicas >= 2 to
   # be truly zero-downtime; the readiness probe gates traffic).
   strategy:
