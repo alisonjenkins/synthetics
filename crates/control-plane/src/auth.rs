@@ -65,3 +65,36 @@ impl WriterAuth for StaticTokenAuth {
         }
     }
 }
+
+/// An authenticated worker (identified by its mTLS client cert in production).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkerIdentity {
+    /// The worker's id.
+    pub worker_id: String,
+}
+
+/// Verifies worker credentials (an mTLS client certificate in production).
+pub trait WorkerAuth: Send + Sync {
+    /// Authenticate a worker credential into a [`WorkerIdentity`].
+    fn authenticate(
+        &self,
+        credential: &str,
+    ) -> impl Future<Output = Result<WorkerIdentity, AuthError>> + Send;
+}
+
+/// A [`WorkerAuth`] that accepts any non-empty credential, treating it as the
+/// worker id. Stands in for mTLS in tests and simple setups.
+#[derive(Debug, Default, Clone)]
+pub struct AcceptWorkerAuth;
+
+impl WorkerAuth for AcceptWorkerAuth {
+    async fn authenticate(&self, credential: &str) -> Result<WorkerIdentity, AuthError> {
+        if credential.is_empty() {
+            Err(AuthError::Missing)
+        } else {
+            Ok(WorkerIdentity {
+                worker_id: credential.to_string(),
+            })
+        }
+    }
+}

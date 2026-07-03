@@ -12,13 +12,18 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
 
-use crate::auth::{WriterAuth, WriterIdentity};
-use crate::model::{Endpoint, Node};
+use crate::auth::{WorkerAuth, WorkerIdentity, WriterAuth, WriterIdentity};
+use crate::model::{Endpoint, Node, Worker};
+use crate::resolve::{resolve, ResolvedCheck};
 use crate::store::ConfigStore;
 use crate::validate::{validate_endpoint, validate_node, FieldError};
+
+/// How recent a heartbeat must be for a worker to count as live.
+pub const WORKER_LIVE_WINDOW_MS: i64 = 30_000;
 
 /// Shared handler state: the config store and the writer authenticator.
 pub struct AppState<S, A> {
@@ -266,4 +271,117 @@ async fn list_endpoints<S: ConfigStore, A: WriterAuth>(
             .filter(|e| in_scope(&identity, &e.id))
             .collect(),
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Worker API (T25): mTLS, read-only + heartbeat.
+// ---------------------------------------------------------------------------
+
+/// Current config version (cheap poll target for change detection, V28).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VersionResponse {
+    /// Monotonic config version.
+    pub version: u64,
+}
+
+/// The resolved checks plus the version they were resolved at.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChecksResponse {
+    /// Config version these checks correspond to.
+    pub version: u64,
+    /// Flat, resolved checks (hierarchy already merged, V25).
+    pub checks: Vec<ResolvedCheck>,
+}
+
+/// A worker heartbeat/registration body.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HeartbeatRequest {
+    /// Worker id.
+    pub id: String,
+    /// Worker region.
+    pub region: String,
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+async fn authenticate_worker<W: WorkerAuth>(
+    auth: &W,
+    headers: &HeaderMap,
+) -> Result<WorkerIdentity, ApiError> {
+    let credential = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .ok_or(ApiError::Unauthorized)?;
+    auth.authenticate(credential)
+        .await
+        .map_err(|_| ApiError::Unauthorized)
+}
+
+/// Build the worker API router (read-only reads + heartbeat).
+pub fn worker_router<S, W>(state: AppState<S, W>) -> Router
+where
+    S: ConfigStore + 'static,
+    W: WorkerAuth + 'static,
+{
+    Router::new()
+        .route("/config/version", get(get_version::<S, W>))
+        .route("/checks", get(get_checks::<S, W>))
+        .route("/workers", get(get_workers::<S, W>))
+        .route("/workers/heartbeat", post(post_heartbeat::<S, W>))
+        .with_state(state)
+}
+
+async fn get_version<S: ConfigStore, W: WorkerAuth>(
+    State(state): State<AppState<S, W>>,
+    headers: HeaderMap,
+) -> Result<Json<VersionResponse>, ApiError> {
+    authenticate_worker(&*state.auth, &headers).await?;
+    let version = state.store.config_version().await.map_err(internal)?;
+    Ok(Json(VersionResponse { version }))
+}
+
+async fn get_checks<S: ConfigStore, W: WorkerAuth>(
+    State(state): State<AppState<S, W>>,
+    headers: HeaderMap,
+) -> Result<Json<ChecksResponse>, ApiError> {
+    authenticate_worker(&*state.auth, &headers).await?;
+    let nodes = state.store.list_nodes().await.map_err(internal)?;
+    let endpoints = state.store.list_endpoints().await.map_err(internal)?;
+    let (checks, _errors) = resolve(&nodes, &endpoints);
+    let version = state.store.config_version().await.map_err(internal)?;
+    Ok(Json(ChecksResponse { version, checks }))
+}
+
+async fn get_workers<S: ConfigStore, W: WorkerAuth>(
+    State(state): State<AppState<S, W>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<Worker>>, ApiError> {
+    authenticate_worker(&*state.auth, &headers).await?;
+    let cutoff = now_ms() - WORKER_LIVE_WINDOW_MS;
+    let workers = state
+        .store
+        .list_live_workers(cutoff)
+        .await
+        .map_err(internal)?;
+    Ok(Json(workers))
+}
+
+async fn post_heartbeat<S: ConfigStore, W: WorkerAuth>(
+    State(state): State<AppState<S, W>>,
+    headers: HeaderMap,
+    Json(body): Json<HeartbeatRequest>,
+) -> Result<StatusCode, ApiError> {
+    authenticate_worker(&*state.auth, &headers).await?;
+    state
+        .store
+        .heartbeat_worker(&body.id, &body.region, now_ms())
+        .await
+        .map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
 }
