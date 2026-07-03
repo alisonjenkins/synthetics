@@ -179,6 +179,57 @@ async fn invalid_endpoint_is_rejected_with_field_scoped_error() {
 }
 
 #[tokio::test]
+async fn internal_literal_ip_target_without_optin_is_rejected() {
+    let app = app();
+    // http target at the cloud metadata address, no allow_internal: the CP
+    // rejects it at write time (defense in depth for literal IPs; hostnames are
+    // caught by the worker at connect time).
+    let ep = Endpoint {
+        id: "web/prod/meta".into(),
+        environment: "web/prod".into(),
+        name: "meta".into(),
+        target: TargetSpec::Http(HttpSpec {
+            url: "http://169.254.169.254/latest/meta-data/".into(),
+            method: None,
+            headers: Default::default(),
+            body: None,
+            allow_insecure: false,
+        }),
+        interval: None,
+        timeout: None,
+        tags: vec![],
+        assertions: vec![],
+        allow_internal: false,
+    };
+    let (status, body) = send(
+        &app,
+        put(
+            "/endpoints/web/prod/meta",
+            Some("t-web"),
+            &serde_json::to_vec(&ep).unwrap(),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["field"], "target.url");
+
+    // With the opt-in, the CP accepts it (the worker still gates on its
+    // allowlist at connect time).
+    let mut ok = ep.clone();
+    ok.allow_internal = true;
+    let (status, _) = send(
+        &app,
+        put(
+            "/endpoints/web/prod/meta",
+            Some("t-web"),
+            &serde_json::to_vec(&ok).unwrap(),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
 async fn invalid_http_url_is_rejected() {
     let app = app();
     let ep = Endpoint {

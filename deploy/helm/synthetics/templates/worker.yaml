@@ -38,6 +38,11 @@ spec:
             - {{ .Values.worker.pollSecs | quote }}
             - --heartbeat-secs
             - {{ .Values.worker.heartbeatSecs | quote }}
+            {{- range .Values.worker.allowInternalCidrs }}
+            # SSRF guard: internal CIDRs an allow_internal endpoint may reach.
+            - --allow-internal-cidr
+            - {{ . | quote }}
+            {{- end }}
           env:
             # Worker id defaults to $HOSTNAME (the pod name) — unique per pod,
             # which is all rendezvous hashing needs.

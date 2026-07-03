@@ -56,6 +56,7 @@ pub fn validate_endpoint(endpoint: &Endpoint) -> Result<(), FieldError> {
             if url.scheme() != "http" && url.scheme() != "https" {
                 return Err(err("target.url", "scheme must be http or https"));
             }
+            reject_internal_literal(url.host_str(), endpoint.allow_internal, "target.url")?;
         }
         TargetSpec::Tcp(tcp) => {
             if tcp.host.trim().is_empty() {
@@ -64,6 +65,7 @@ pub fn validate_endpoint(endpoint: &Endpoint) -> Result<(), FieldError> {
             if tcp.port == 0 {
                 return Err(err("target.port", "must be non-zero"));
             }
+            reject_internal_literal(Some(&tcp.host), endpoint.allow_internal, "target.host")?;
         }
         TargetSpec::Ws(ws) => {
             let url = url::Url::parse(&ws.url)
@@ -71,10 +73,38 @@ pub fn validate_endpoint(endpoint: &Endpoint) -> Result<(), FieldError> {
             if url.scheme() != "ws" && url.scheme() != "wss" {
                 return Err(err("target.url", "scheme must be ws or wss"));
             }
+            reject_internal_literal(url.host_str(), endpoint.allow_internal, "target.url")?;
         }
     }
     for (i, assertion) in endpoint.assertions.iter().enumerate() {
         validate_assertion(i, assertion)?;
+    }
+    Ok(())
+}
+
+/// Reject a target whose host is a *literal* internal IP address unless the
+/// endpoint opted in (SSRF guard, #5). This is defense in depth: it catches the
+/// obvious cases (e.g. `169.254.169.254`) at write time so the Terraform plan
+/// fails fast. Hostnames that only resolve to internal addresses cannot be
+/// checked here without DNS — the worker enforces those authoritatively at
+/// connect time against its operator allowlist.
+fn reject_internal_literal(
+    host: Option<&str>,
+    allow_internal: bool,
+    field: &str,
+) -> Result<(), FieldError> {
+    if allow_internal {
+        return Ok(());
+    }
+    if let Some(host) = host {
+        if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+            if synthetics::net_guard::is_internal_ip(ip) {
+                return Err(err(
+                    field,
+                    "resolves to an internal address; set allow_internal to permit it",
+                ));
+            }
+        }
     }
     Ok(())
 }

@@ -63,6 +63,10 @@ worker:
   heartbeatSecs: 10
   # Credential presented to the control plane (AcceptWorkerAuth: any non-empty).
   cpToken: worker-fleet
+  # SSRF guard (#5): operator allowlist of internal CIDRs an endpoint that sets
+  # allow_internal may be checked against. Empty = no internal targets permitted
+  # even with the opt-in (fail closed). e.g. ["10.0.0.0/8", "192.168.0.0/16"].
+  allowInternalCidrs: []
   # Cap simultaneous voluntary evictions; sharding covers individual losses (V27).
   podDisruptionBudget:
     enabled: true
