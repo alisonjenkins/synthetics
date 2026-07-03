@@ -19,6 +19,9 @@ controlPlane:
   writerTokens:
     - token: dev-token
       product: web
+  # Measured RSS ~7 MiB (Postgres pool + resolving the endpoint set in memory).
+  # Grows transiently with the number of endpoints resolved per /checks; 64Mi
+  # request / 256Mi limit comfortably covers tens of thousands of endpoints.
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { cpu: 500m, memory: 256Mi }
@@ -44,6 +47,11 @@ worker:
   # enabled the worker points at it automatically. An unreachable target is
   # dropped gracefully (V13).
   dogstatsd: "127.0.0.1:8125"
+  # Measured RSS ~25 MiB with 200 endpoints @100ms (small responses). Memory is
+  # flat in endpoint count; the hard ceiling is base + max_concurrency ×
+  # MAX_BODY_BYTES (2 MiB body cap) during simultaneous large-body downloads —
+  # ~0.5 GiB at the default concurrency of 256. Raise the limit (or lower
+  # concurrency) only for fleets monitoring many large-body endpoints.
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { cpu: "1", memory: 256Mi }
@@ -52,9 +60,11 @@ mockDatadog:
   # Local DogStatsD receiver + web viewer. Never sends to real Datadog (V39).
   enabled: true
   replicas: 1
+  # Measured RSS ~7 MiB with 5000 captured metrics (the retention cap). Bounded
+  # by capacity × metric size.
   resources:
     requests: { cpu: 10m, memory: 32Mi }
-    limits: { cpu: 200m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 64Mi }
 
 postgres:
   # CloudNativePG-provisioned Postgres (operator installed separately).
