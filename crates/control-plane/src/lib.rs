@@ -5,11 +5,14 @@
 //! serves them to the fleet (T24/T25). The store holds config + membership only
 //! — check results flow worker → DogStatsD → Datadog, never through here (V30).
 
+pub mod api;
+pub mod auth;
 pub mod memory;
 pub mod model;
 pub mod pg;
 pub mod resolve;
 pub mod store;
+pub mod validate;
 
 pub use memory::MemoryStore;
 pub use pg::PgStore;

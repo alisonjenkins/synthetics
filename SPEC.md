@@ -232,7 +232,7 @@ check. Replace pricey Datadog synthetics.
 | T21 | . | ControlPlaneConfigSource: CP client + change-feed + local cache + outage survival | I.cp,I.configsource,V28,V29,V24 |
 | T22 | x | `ConfigStore` trait + in-memory impl + Postgres impl + migrations | I.store,V30,V34,V35 |
 | T23 | x | CP inheritance resolver (hierarchy → flat resolved checks) | I.store,V25 |
-| T24 | . | CP writer API (OIDC, per-product scope, hierarchy CRUD) + write validation | I.cp,I.auth,V31,V32,V37 |
+| T24 | x | CP writer API (OIDC, per-product scope, hierarchy CRUD) + write validation | I.cp,I.auth,V31,V32,V37 |
 | T25 | . | CP worker API (mTLS, read + change-feed/NOTIFY, version stamp) | I.cp,I.auth,V28,V33 |
 | T26 | . | CP API contract doc (OpenAPI) + validation rules for future TF provider | I.cp,V37 |
 | T27 | x | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
