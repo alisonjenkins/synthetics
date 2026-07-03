@@ -131,6 +131,15 @@ async fn viewer() -> Html<&'static str> {
     Html(VIEWER_HTML)
 }
 
+/// The static viewer HTML served at `GET /`. Exposed for tests.
+pub fn viewer_html() -> &'static str {
+    VIEWER_HTML
+}
+
+// Rows are built with `createElement` + `textContent` (never `innerHTML`) so
+// that metric fields — which arrive from an unauthenticated UDP socket — cannot
+// inject markup or script into the page (stored XSS). The DOM text API escapes
+// them for us.
 const VIEWER_HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8">
 <title>mock datadog</title>
 <style>body{font-family:system-ui,sans-serif;margin:1.5rem}
@@ -140,12 +149,30 @@ th{background:#f4f6f9}code{font-size:12px;color:#555}</style></head>
 <p id="count"></p>
 <table><thead><tr><th>metric</th><th>value</th><th>type</th><th>tags</th></tr></thead><tbody id="rows"></tbody></table>
 <script>
+function cell(text, code){
+  const td = document.createElement('td');
+  if (code){
+    const c = document.createElement('code');
+    c.textContent = text;
+    td.appendChild(c);
+  } else {
+    td.textContent = text;
+  }
+  return td;
+}
 async function refresh(){
   const m = await (await fetch('/metrics')).json();
   document.getElementById('count').textContent = m.length + ' metrics captured';
-  document.getElementById('rows').innerHTML = m.slice().reverse().map(x =>
-    `<tr><td><code>${x.name}</code></td><td>${x.value}</td><td>${x.kind}</td><td><code>${x.tags.join(', ')}</code></td></tr>`
-  ).join('');
+  const tbody = document.getElementById('rows');
+  tbody.replaceChildren();
+  for (const x of m.slice().reverse()){
+    const tr = document.createElement('tr');
+    tr.appendChild(cell(x.name, true));
+    tr.appendChild(cell(String(x.value), false));
+    tr.appendChild(cell(x.kind, false));
+    tr.appendChild(cell((x.tags || []).join(', '), true));
+    tbody.appendChild(tr);
+  }
 }
 refresh(); setInterval(refresh, 2000);
 </script></body></html>"#;

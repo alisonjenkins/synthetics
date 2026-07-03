@@ -37,6 +37,23 @@ fn ingests_multiline_datagram_and_evicts_oldest() {
     assert_eq!(snap[1].name, "c");
 }
 
+#[test]
+fn viewer_does_not_interpolate_metric_fields_into_innerhtml() {
+    // Metric name/kind/tags arrive from an unauthenticated UDP socket. If the
+    // viewer builds rows with `innerHTML` from those fields, a datagram like
+    // `<img src=x onerror=alert(1)>:1|g` is stored and executed against anyone
+    // viewing the page. Rows must be assembled with DOM text nodes instead.
+    let html = mock_datadog::viewer_html();
+    assert!(
+        !html.contains("innerHTML"),
+        "viewer must not use an innerHTML sink for UDP-sourced fields"
+    );
+    assert!(
+        html.contains("textContent") || html.contains("createTextNode"),
+        "viewer must insert metric fields as text"
+    );
+}
+
 #[tokio::test]
 async fn udp_roundtrip_captures_sent_metrics() {
     let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
