@@ -2971,6 +2971,7 @@ name = "synthetics-control-plane"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "clap",
  "http-body-util",
  "humantime-serde",
  "regex",
@@ -2983,6 +2984,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tower",
+ "tracing",
  "url",
 ]
 

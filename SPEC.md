@@ -59,8 +59,15 @@ check. Replace pricey Datadog synthetics.
   runtime-selected backends. `dyn`/boxing only in cold paths (startup, error
   `source`).
 - Deployable to Kubernetes via a Helm chart (worker fleet + control plane).
-  Local dev/test on a KIND cluster; CloudNativePG operator provisions the
-  Postgres store for local testing. IaC-first.
+  Local dev/test on a KIND cluster with a local image registry;
+  CloudNativePG operator provisions the Postgres store for local testing.
+  IaC-first.
+- Nix flake: devshell (dev tooling) + a package per binary (worker daemon,
+  control-plane server) + nix-built OCI container images bundling each
+  binary with its runtime deps. Reproducible builds.
+- Local orchestration: `just` recipes + Tilt stand up the whole local stack
+  (KIND + registry + CloudNativePG + build/push images + deploy Helm) with
+  one command.
 - Local testing uses a mock Datadog (DogStatsD receiver + viewer), never
   real Datadog. Exercises the real `DogStatsdSink` wire path; captured
   metrics viewable locally.
@@ -236,7 +243,11 @@ check. Replace pricey Datadog synthetics.
 | T25 | x | CP worker API (mTLS, read + version stamp, heartbeat) | I.cp,I.auth,V28,V33 |
 | T26 | x | CP API contract doc (OpenAPI) + validation rules for future TF provider | I.cp,V37 |
 | T27 | x | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
-| T28 | . | Helm chart (worker + CP) + KIND local dev + CloudNativePG for DB | I.cp,I.store |
+| T30 | x | control-plane server binary (PgStore + writer/worker routers + serve) | I.cp,I.store,I.auth |
+| T31 | . | worker daemon control-plane mode (ControlPlaneConfigSource + heartbeat + poll reload) | I.configsource,I.membership,V28 |
+| T28 | . | Helm chart (worker + CP + CNPG) + KIND cluster + local registry | I.cp,I.store |
+| T32 | . | nix flake: devshell + packages (both binaries) + nix-built containers | (build/deploy) |
+| T33 | . | just + Tilt stand up local stack (kind+registry+cnpg+images+helm) | (build/deploy) |
 | T29 | . | mock Datadog (DogStatsD receiver + viewer) for local/test | I.ddagent,V39 |
 
 ## §B — bugs
