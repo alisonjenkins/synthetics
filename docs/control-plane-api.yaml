@@ -1,0 +1,386 @@
+openapi: 3.1.0
+info:
+  title: Synthetics Control Plane API
+  version: 0.1.0
+  description: >
+    The control plane's HTTP contract (T26). Two surfaces share a host:
+
+      * **Writer API** — authored by Terraform/OpenTofu and CI. Hierarchy and
+        endpoint CRUD, authenticated per-product via OIDC (V31), validated on
+        every write (V37).
+      * **Worker API** — consumed by the worker fleet. Read-only serving of
+        resolved checks + the live worker-set, plus heartbeat, authenticated
+        via mTLS.
+
+    This file is the contract a provider (any language) targets. Results are
+    never stored or served here — they flow worker → DogStatsD → Datadog (V30).
+
+servers:
+  - url: https://cp.example.internal
+    description: Control plane (in-cluster)
+
+tags:
+  - name: writer
+    description: Hierarchy + endpoint authoring (OIDC, per-product scope).
+  - name: worker
+    description: Fleet-facing reads + heartbeat (mTLS, read-only).
+
+security:
+  - oidcBearer: []
+
+paths:
+  /nodes:
+    get:
+      tags: [writer]
+      summary: List nodes under the caller's product.
+      responses:
+        "200":
+          description: Nodes visible to the caller.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Node" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /nodes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/HierId"
+    put:
+      tags: [writer]
+      summary: Create or replace a node.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Node" }
+      responses:
+        "204": { description: Stored. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Validation" }
+    get:
+      tags: [writer]
+      summary: Fetch a node.
+      responses:
+        "200":
+          description: The node.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Node" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [writer]
+      summary: Delete a node.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /endpoints:
+    get:
+      tags: [writer]
+      summary: List endpoints under the caller's product.
+      responses:
+        "200":
+          description: Endpoints visible to the caller.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Endpoint" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /endpoints/{id}:
+    parameters:
+      - $ref: "#/components/parameters/HierId"
+    put:
+      tags: [writer]
+      summary: Create or replace an endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Endpoint" }
+      responses:
+        "204": { description: Stored. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Validation" }
+    get:
+      tags: [writer]
+      summary: Fetch an endpoint.
+      responses:
+        "200":
+          description: The endpoint.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Endpoint" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [writer]
+      summary: Delete an endpoint.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /config/version:
+    get:
+      tags: [worker]
+      summary: Current config version (cheap poll for change detection, V28).
+      security: [ { mtls: [] } ]
+      responses:
+        "200":
+          description: The current version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VersionResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /checks:
+    get:
+      tags: [worker]
+      summary: Resolved checks (hierarchy already merged, V25) + their version.
+      security: [ { mtls: [] } ]
+      responses:
+        "200":
+          description: Resolved checks.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChecksResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /workers:
+    get:
+      tags: [worker]
+      summary: The live worker-set (drives rendezvous ownership).
+      security: [ { mtls: [] } ]
+      responses:
+        "200":
+          description: Live workers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Worker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /workers/heartbeat:
+    post:
+      tags: [worker]
+      summary: Register/refresh this worker's heartbeat.
+      security: [ { mtls: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HeartbeatRequest" }
+      responses:
+        "204": { description: Recorded. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    oidcBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OIDC id-token; authorized to write under a single product (V31).
+    mtls:
+      type: mutualTLS
+      description: Worker client certificate; read-only access.
+
+  parameters:
+    HierId:
+      name: id
+      in: path
+      required: true
+      description: Hierarchical id, e.g. `web/globex/prod` (slashes allowed).
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Authenticated but outside the caller's product scope (V31).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource does not exist.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Validation:
+      description: Field-scoped validation failure (V37).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Duration:
+      type: string
+      description: Humantime duration, e.g. `30s`, `5m`, `1h30m`.
+      examples: ["30s", "5m"]
+
+    Node:
+      type: object
+      required: [id, kind, name]
+      properties:
+        id: { type: string, description: "Hierarchical path; first segment is the product." }
+        kind: { type: string, description: "org | product | customer | environment | ..." }
+        name: { type: string }
+        parent:
+          type: [string, "null"]
+          description: Parent node id; null for a root.
+        defaults: { $ref: "#/components/schemas/NodeDefaults" }
+
+    NodeDefaults:
+      type: object
+      description: Defaults inherited by descendants (endpoints may override).
+      properties:
+        interval: { $ref: "#/components/schemas/Duration" }
+        timeout: { $ref: "#/components/schemas/Duration" }
+        tags:
+          type: array
+          items: { type: string }
+
+    Endpoint:
+      type: object
+      required: [id, environment, name, target]
+      properties:
+        id: { type: string, description: "Hierarchical path; first segment is the product." }
+        environment: { type: string, description: "Environment node id this endpoint hangs off." }
+        name: { type: string }
+        target: { $ref: "#/components/schemas/TargetSpec" }
+        interval: { $ref: "#/components/schemas/Duration" }
+        timeout: { $ref: "#/components/schemas/Duration" }
+        tags:
+          type: array
+          items: { type: string }
+        assertions:
+          type: array
+          items: { $ref: "#/components/schemas/Assertion" }
+
+    TargetSpec:
+      oneOf:
+        - $ref: "#/components/schemas/HttpSpec"
+        - $ref: "#/components/schemas/TcpSpec"
+      discriminator:
+        propertyName: type
+
+    HttpSpec:
+      type: object
+      required: [type, url]
+      properties:
+        type: { const: http }
+        url: { type: string, format: uri }
+        method: { type: [string, "null"] }
+        headers:
+          type: object
+          additionalProperties: { type: string }
+        body: { type: [string, "null"] }
+        allow_insecure: { type: boolean, default: false }
+
+    TcpSpec:
+      type: object
+      required: [type, host, port]
+      properties:
+        type: { const: tcp }
+        host: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+
+    Assertion:
+      type: object
+      required: [type]
+      discriminator: { propertyName: type }
+      description: >
+        One of: status (exactly one of equals/in_range), header (name + one of
+        equals/contains), latency (max duration), cert_min_age (days),
+        body_contains / body_not_contains (value), body_regex (pattern),
+        body_sha256 (64 lowercase hex).
+      properties:
+        type:
+          type: string
+          enum: [status, header, latency, cert_min_age, body_contains, body_not_contains, body_regex, body_sha256]
+        equals: {}
+        in_range:
+          type: array
+          items: { type: integer }
+          minItems: 2
+          maxItems: 2
+        name: { type: string }
+        contains: { type: string }
+        max: { $ref: "#/components/schemas/Duration" }
+        days: { type: integer }
+        value: { type: string }
+        pattern: { type: string }
+        hex: { type: string }
+
+    ResolvedCheck:
+      type: object
+      description: A materialized check served to workers (hierarchy merged, V25).
+      required: [id, interval, timeout, tags, target, assertions]
+      properties:
+        id: { type: string }
+        interval: { $ref: "#/components/schemas/Duration" }
+        timeout: { $ref: "#/components/schemas/Duration" }
+        tags:
+          type: array
+          items: { type: string }
+        target: { $ref: "#/components/schemas/TargetSpec" }
+        assertions:
+          type: array
+          items: { $ref: "#/components/schemas/Assertion" }
+
+    ChecksResponse:
+      type: object
+      required: [version, checks]
+      properties:
+        version: { type: integer, format: int64 }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/ResolvedCheck" }
+
+    VersionResponse:
+      type: object
+      required: [version]
+      properties:
+        version: { type: integer, format: int64 }
+
+    Worker:
+      type: object
+      required: [id, region, last_heartbeat_ms]
+      properties:
+        id: { type: string }
+        region: { type: string }
+        last_heartbeat_ms: { type: integer, format: int64 }
+
+    HeartbeatRequest:
+      type: object
+      required: [id, region]
+      properties:
+        id: { type: string }
+        region: { type: string }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [unauthorized, forbidden, not_found, validation, internal]
+        field:
+          type: string
+          description: For validation errors, the dotted path to the bad field.
+        message: { type: string }
