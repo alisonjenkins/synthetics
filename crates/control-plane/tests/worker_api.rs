@@ -108,6 +108,64 @@ async fn checks_are_served_resolved() {
 }
 
 #[tokio::test]
+async fn checks_cache_invalidates_on_write() {
+    // Build an app sharing a store we can mutate directly.
+    let store = Arc::new(MemoryStore::new());
+    store
+        .upsert_node(Node {
+            id: "web".into(),
+            kind: "product".into(),
+            name: "web".into(),
+            parent: None,
+            defaults: NodeDefaults::default(),
+        })
+        .await
+        .unwrap();
+    store
+        .upsert_node(Node {
+            id: "web/prod".into(),
+            kind: "environment".into(),
+            name: "prod".into(),
+            parent: Some("web".into()),
+            defaults: NodeDefaults::default(),
+        })
+        .await
+        .unwrap();
+    let app = worker_router(AppState::new(Arc::clone(&store), Arc::new(AcceptWorkerAuth)));
+
+    // First poll: no endpoints — this populates the version-keyed cache.
+    let (_, body) = send(&app, get("/checks", Some("w1"))).await;
+    assert_eq!(body["checks"].as_array().unwrap().len(), 0);
+
+    // A write bumps the config version.
+    store
+        .upsert_endpoint(Endpoint {
+            id: "web/prod/db".into(),
+            environment: "web/prod".into(),
+            name: "db".into(),
+            target: TargetSpec::Tcp(TcpSpec {
+                host: "db".into(),
+                port: 5432,
+            }),
+            interval: None,
+            timeout: None,
+            tags: vec![],
+            assertions: vec![],
+            allow_internal: false,
+            retries: None,
+            retry_backoff: None,
+        })
+        .await
+        .unwrap();
+
+    // Second poll must reflect the write, not the stale cached (empty) response.
+    let (_, body) = send(&app, get("/checks", Some("w1"))).await;
+    let checks = body["checks"].as_array().unwrap();
+    assert_eq!(checks.len(), 1, "cache must invalidate on version bump");
+    assert_eq!(checks[0]["id"], "web/prod/db");
+}
+
+#[tokio::test]
 async fn version_is_served() {
     let app = seeded_app().await;
     let (status, body) = send(&app, get("/config/version", Some("w1"))).await;

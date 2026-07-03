@@ -7,6 +7,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod checks_cache;
 pub mod memory;
 pub mod model;
 pub mod pg;

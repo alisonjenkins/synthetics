@@ -31,6 +31,8 @@ pub struct AppState<S, A> {
     pub store: Arc<S>,
     /// The writer authenticator.
     pub auth: Arc<A>,
+    /// Version-keyed cache of the resolved `/checks` response (#7).
+    checks_cache: Arc<crate::checks_cache::ChecksCache>,
 }
 
 impl<S, A> Clone for AppState<S, A> {
@@ -38,6 +40,7 @@ impl<S, A> Clone for AppState<S, A> {
         Self {
             store: Arc::clone(&self.store),
             auth: Arc::clone(&self.auth),
+            checks_cache: Arc::clone(&self.checks_cache),
         }
     }
 }
@@ -45,7 +48,11 @@ impl<S, A> Clone for AppState<S, A> {
 impl<S, A> AppState<S, A> {
     /// Assemble state from a store and authenticator.
     pub fn new(store: Arc<S>, auth: Arc<A>) -> Self {
-        Self { store, auth }
+        Self {
+            store,
+            auth,
+            checks_cache: Arc::new(crate::checks_cache::ChecksCache::default()),
+        }
     }
 }
 
@@ -329,13 +336,39 @@ async fn get_version<S: ConfigStore, W: WorkerAuth>(
 async fn get_checks<S: ConfigStore, W: WorkerAuth>(
     State(state): State<AppState<S, W>>,
     headers: HeaderMap,
-) -> Result<Json<ChecksResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     authenticate_worker(&*state.auth, &headers).await?;
+
+    // Fast path: serve the cached serialized response if the config version is
+    // unchanged since we resolved it (#7). Every worker polls this endpoint, so
+    // skipping the node/endpoint listing + hierarchy resolution here is the
+    // difference between O(1) and O(fleet × endpoints) work per poll cycle.
+    let version = state.store.config_version().await.map_err(internal)?;
+    if let Some(bytes) = state.checks_cache.get(version) {
+        return Ok(json_response(bytes));
+    }
+
     let nodes = state.store.list_nodes().await.map_err(internal)?;
     let endpoints = state.store.list_endpoints().await.map_err(internal)?;
     let (checks, _errors) = resolve(&nodes, &endpoints);
-    let version = state.store.config_version().await.map_err(internal)?;
-    Ok(Json(ChecksResponse { version, checks }))
+    // Re-read the version so the cached payload is only stored when it is a
+    // consistent snapshot (no write landed mid-resolve); otherwise serve fresh
+    // but leave the cache for the next poll to populate.
+    let version_after = state.store.config_version().await.map_err(internal)?;
+    let body = ChecksResponse {
+        version: version_after,
+        checks,
+    };
+    let bytes = axum::body::Bytes::from(serde_json::to_vec(&body).map_err(internal)?);
+    if version == version_after {
+        state.checks_cache.put(version_after, bytes.clone());
+    }
+    Ok(json_response(bytes))
+}
+
+/// Build a `200 OK` JSON response from pre-serialized bytes.
+fn json_response(bytes: axum::body::Bytes) -> Response {
+    ([(header::CONTENT_TYPE, "application/json")], bytes).into_response()
 }
 
 async fn get_workers<S: ConfigStore, W: WorkerAuth>(
