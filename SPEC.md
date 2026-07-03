@@ -222,7 +222,7 @@ check. Replace pricey Datadog synthetics.
 | T10 | . | daemon wiring: startup, graceful shutdown | V4 |
 | T12 | . | `tracing` subscriber: JSON structured logs + span wiring | I.log,V14 |
 | T13 | . | benchmarks for hot paths (SIMD vs scalar, scheduler, check) | V16,V6,V15 |
-| T14 | . | assertion engine (status/header/latency/cert-age + body contains/regex/sha256) | I.assert,V18,V9,V22 |
+| T14 | x | assertion engine (status/header/latency/cert-age + body contains/regex/sha256) | I.assert,V18,V9,V22 |
 | T11 | . | WebSocket check (future) | I.ws,V1,V9,V35,V36 |
 | T16 | x | refactor `MetricSink` to static dispatch (RPITIT+Send, drop async_trait; enum-dispatch deferred to 2nd backend per V36) | V35,V36 |
 | T17 | . | `Check` trait (static dispatch) unifying protocol executors | V35,V36 |
