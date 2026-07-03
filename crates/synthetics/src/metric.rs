@@ -18,14 +18,18 @@ use std::time::Duration;
 /// The result of one check: success or failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
+    /// The check passed (transport succeeded and all assertions held).
     Success,
+    /// The check failed (transport error, timeout, panic, or a failed assertion).
     Failure,
 }
 
 /// Protocol-specific timings and signals for one check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CheckDetail {
+    /// Signals from an HTTP(S) check.
     Http(HttpDetail),
+    /// Signals from a TCP check.
     Tcp(TcpDetail),
 }
 
@@ -57,6 +61,7 @@ pub struct HttpDetail {
 /// Signals for a TCP check (V10): the connect time.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TcpDetail {
+    /// TCP connect time.
     pub connect: Option<Duration>,
 }
 
@@ -65,7 +70,9 @@ pub struct TcpDetail {
 /// content (V22).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssertionOutcome {
+    /// Low-cardinality identifier of which assertion this was (e.g. `status`).
     pub id: String,
+    /// Whether the assertion held.
     pub passed: bool,
 }
 

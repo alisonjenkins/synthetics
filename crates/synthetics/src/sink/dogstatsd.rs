@@ -18,6 +18,8 @@ use crate::metric::{CheckDetail, CheckReport, FailureKind, MetricSink, Outcome, 
 pub const DEFAULT_NAMESPACE: &str = "synthetics";
 
 /// Errors constructing a [`DogStatsdSink`].
+// Variant fields are documented by their `#[error]` messages.
+#[allow(missing_docs)]
 #[derive(Debug, thiserror::Error)]
 pub enum DogStatsdInitError {
     /// Binding the local UDP socket failed.

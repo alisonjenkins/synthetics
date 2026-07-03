@@ -2,7 +2,8 @@
 //!
 //! Runs many HTTP/TCP synthetic checks on independent schedules, records full
 //! Datadog-parity signals per check, and pushes them through a swappable
-//! [`MetricSink`]. Hot-reloadable (SIGHUP) without missing a scheduled check;
+//! [`MetricSink`](metric::MetricSink). Hot-reloadable (SIGHUP) without missing a
+//! scheduled check;
 //! one unhealthy target never affects the checks of healthy targets.
 //!
 //! See `SPEC.md` and `docs/adr/` for the invariants and decisions behind this

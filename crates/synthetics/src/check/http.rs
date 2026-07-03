@@ -80,6 +80,8 @@ pub struct HttpOutcome {
 }
 
 /// Errors from [`run_http_check`]. One variant per distinct failure mode (V1).
+// Variant fields are documented by their `#[error]` messages.
+#[allow(missing_docs)]
 #[derive(Debug, thiserror::Error)]
 pub enum HttpCheckError {
     /// The URL has no host component.

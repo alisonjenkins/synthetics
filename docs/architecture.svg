@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">
+  <defs>
+    <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#5b6472"/>
+    </marker>
+    <style>
+      .box{fill:#f4f6f9;stroke:#9aa4b2;stroke-width:1.2;rx:8;}
+      .built{fill:#eef7ee;stroke:#7bb37b;}
+      .future{fill:#f6f1ea;stroke:#c7a877;stroke-dasharray:5 3;}
+      .t{fill:#222;}
+      .sub{fill:#5b6472;font-size:10px;}
+      .band{fill:#fafbfc;stroke:#e2e6ec;rx:10;}
+      .lbl{fill:#7a8494;font-size:11px;font-weight:600;letter-spacing:.5px;}
+      .flow{stroke:#5b6472;stroke-width:1.4;fill:none;}
+      .title{fill:#1a1a1a;font-size:16px;font-weight:700;}
+    </style>
+  </defs>
+
+  <text x="16" y="26" class="title">synthetics — architecture</text>
+
+  <!-- Control plane band (in progress) -->
+  <rect x="12" y="44" width="936" height="150" class="band"/>
+  <text x="28" y="66" class="lbl">CONTROL PLANE · FLEET  (in progress)</text>
+
+  <rect x="28"  y="80" width="180" height="70" rx="8" class="box future"/>
+  <text x="118" y="108" text-anchor="middle" class="t">Terraform / OpenTofu</text>
+  <text x="118" y="126" text-anchor="middle" class="sub">product/customer/env/endpoint</text>
+  <text x="118" y="140" text-anchor="middle" class="sub">OIDC · per-product · plan-time validate</text>
+
+  <rect x="300" y="80" width="180" height="70" rx="8" class="box future"/>
+  <text x="390" y="104" text-anchor="middle" class="t">Control-plane API</text>
+  <text x="390" y="122" text-anchor="middle" class="sub">resolve inheritance → flat</text>
+  <text x="390" y="136" text-anchor="middle" class="sub">re-validate every write</text>
+
+  <rect x="572" y="80" width="180" height="70" rx="8" class="box future"/>
+  <text x="662" y="104" text-anchor="middle" class="t">ConfigStore trait</text>
+  <text x="662" y="122" text-anchor="middle" class="sub">Postgres (LISTEN/NOTIFY)</text>
+  <text x="662" y="136" text-anchor="middle" class="sub">config + membership only</text>
+
+  <rect x="800" y="80" width="132" height="70" rx="8" class="box future"/>
+  <text x="866" y="108" text-anchor="middle" class="t">Worker fleet</text>
+  <text x="866" y="126" text-anchor="middle" class="sub">rendezvous hash</text>
+  <text x="866" y="140" text-anchor="middle" class="sub">pull + &lt;5s reload</text>
+
+  <path class="flow" marker-end="url(#arw)" d="M208,115 L300,115"/>
+  <path class="flow" marker-end="url(#arw)" d="M480,115 L572,115"/>
+  <path class="flow" marker-end="url(#arw)" d="M752,115 L800,115"/>
+
+  <!-- link from fleet down to worker runtime -->
+  <path class="flow" marker-end="url(#arw)" d="M866,150 L866,210 L120,210 L120,250" stroke-dasharray="5 3"/>
+
+  <!-- Worker runtime band (built) -->
+  <rect x="12" y="250" width="936" height="270" class="band"/>
+  <text x="28" y="272" class="lbl">WORKER RUNTIME  (built · single-node runnable)</text>
+
+  <!-- row 1 -->
+  <rect x="28"  y="286" width="150" height="66" rx="8" class="box built"/>
+  <text x="103" y="312" text-anchor="middle" class="t">ConfigSource</text>
+  <text x="103" y="330" text-anchor="middle" class="sub">File (TOML) · CP</text>
+  <text x="103" y="344" text-anchor="middle" class="sub">hot reload / diff</text>
+
+  <rect x="220" y="286" width="170" height="66" rx="8" class="box built"/>
+  <text x="305" y="308" text-anchor="middle" class="t">Scheduler</text>
+  <text x="305" y="326" text-anchor="middle" class="sub">drift-free intervals</text>
+  <text x="305" y="340" text-anchor="middle" class="sub">bounded concurrency · fault isolation</text>
+
+  <rect x="432" y="286" width="170" height="66" rx="8" class="box built"/>
+  <text x="517" y="308" text-anchor="middle" class="t">run_endpoint</text>
+  <text x="517" y="326" text-anchor="middle" class="sub">per-check span + timeout</text>
+  <text x="517" y="340" text-anchor="middle" class="sub">panic isolation</text>
+
+  <rect x="644" y="286" width="288" height="66" rx="8" class="box built"/>
+  <text x="788" y="308" text-anchor="middle" class="t">HTTP / TCP check</text>
+  <text x="788" y="326" text-anchor="middle" class="sub">DNS · connect · TLS handshake · TTFB</text>
+  <text x="788" y="340" text-anchor="middle" class="sub">download · status · cert-expiry (Datadog parity)</text>
+
+  <path class="flow" marker-end="url(#arw)" d="M178,319 L220,319"/>
+  <path class="flow" marker-end="url(#arw)" d="M390,319 L432,319"/>
+  <path class="flow" marker-end="url(#arw)" d="M602,319 L644,319"/>
+
+  <!-- row 2 -->
+  <rect x="644" y="388" width="288" height="66" rx="8" class="box built"/>
+  <text x="788" y="414" text-anchor="middle" class="t">Assertion engine</text>
+  <text x="788" y="432" text-anchor="middle" class="sub">status/header/latency/cert · body (SIMD scan)</text>
+  <text x="788" y="446" text-anchor="middle" class="sub">bodies never leave the process</text>
+
+  <rect x="432" y="388" width="170" height="66" rx="8" class="box built"/>
+  <text x="517" y="414" text-anchor="middle" class="t">CheckReport</text>
+  <text x="517" y="432" text-anchor="middle" class="sub">backend-neutral</text>
+  <text x="517" y="446" text-anchor="middle" class="sub">outcome + signals</text>
+
+  <rect x="220" y="388" width="170" height="66" rx="8" class="box built"/>
+  <text x="305" y="414" text-anchor="middle" class="t">MetricSink</text>
+  <text x="305" y="432" text-anchor="middle" class="sub">DogStatsD (UDP/UDS)</text>
+  <text x="305" y="446" text-anchor="middle" class="sub">degrade if agent down</text>
+
+  <rect x="28" y="388" width="150" height="66" rx="8" class="box"/>
+  <text x="103" y="414" text-anchor="middle" class="t">Datadog agent</text>
+  <text x="103" y="432" text-anchor="middle" class="sub">local DogStatsD</text>
+  <text x="103" y="446" text-anchor="middle" class="sub">→ Datadog</text>
+
+  <!-- down from check row to assertion, then leftward -->
+  <path class="flow" marker-end="url(#arw)" d="M788,352 L788,388"/>
+  <path class="flow" marker-end="url(#arw)" d="M644,421 L602,421"/>
+  <path class="flow" marker-end="url(#arw)" d="M432,421 L390,421"/>
+  <path class="flow" marker-end="url(#arw)" d="M220,421 L178,421"/>
+
+  <text x="28" y="504" class="sub">Static dispatch throughout (no dyn on hot paths) · thiserror per-fn errors · clippy denies unwrap/expect · TDD · cargo-deny</text>
+</svg>

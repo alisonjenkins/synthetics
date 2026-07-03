@@ -11,6 +11,10 @@ repository = ""
 
 # Clippy gate (ADR 0008, V12): deny panic-on-error in production paths.
 # Inherited by every member via `[lints] workspace = true`.
+[workspace.lints.rust]
+# Every public item must be documented (V38); CI's -D warnings enforces it.
+missing_docs = "warn"
+
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"

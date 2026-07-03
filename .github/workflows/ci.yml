@@ -45,6 +45,12 @@ jobs:
       - name: Doc tests
         run: cargo test --doc --all-features
 
+      # V38: every public item documented; rustdoc builds clean.
+      - name: Docs
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
       # V16 / ADR 0010: keep benches compiling.
       - name: Benches compile
         run: cargo bench --no-run --all-features

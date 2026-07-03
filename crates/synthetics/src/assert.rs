@@ -1,6 +1,6 @@
 //! Assertion engine (T14).
 //!
-//! Evaluates the typed assertions from [`Assertion`](crate::config::Assertion)
+//! Evaluates the typed assertions from [`Assertion`]
 //! against a check's result, producing one [`AssertionOutcome`] per assertion
 //! (V18). Each outcome carries a low-cardinality id naming *which* assertion it
 //! was (V22) — never body content. Body scans use a scalar search here; the

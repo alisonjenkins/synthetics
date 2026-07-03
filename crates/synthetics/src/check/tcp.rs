@@ -33,6 +33,8 @@ pub struct TcpOutcome {
 }
 
 /// Errors from [`run_tcp_check`]. One variant per distinct failure mode (V1).
+// Variant fields are documented by their `#[error]` messages.
+#[allow(missing_docs)]
 #[derive(Debug, thiserror::Error)]
 pub enum TcpCheckError {
     /// A phase exceeded the check deadline (V19).

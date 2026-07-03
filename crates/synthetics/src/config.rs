@@ -48,13 +48,16 @@ pub struct EndpointConfig {
 /// The protocol-specific target of a check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
+    /// An HTTP(S) endpoint.
     Http(HttpTarget),
+    /// A raw TCP endpoint.
     Tcp(TcpTarget),
 }
 
 /// An HTTP(S) request to issue and time (I.http).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpTarget {
+    /// Target URL (`http`/`https`).
     pub url: Url,
     /// Upper-cased HTTP method; defaults to `GET`.
     pub method: String,
@@ -70,7 +73,9 @@ pub struct HttpTarget {
 /// A TCP endpoint whose connect is timed (I.tcp).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TcpTarget {
+    /// Hostname or IP to connect to.
     pub host: String,
+    /// TCP port to connect to.
     pub port: u16,
 }
 
@@ -81,36 +86,55 @@ pub struct TcpTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Assertion {
+    /// Assert on the HTTP status code. Exactly one of `equals`/`in_range` is set.
     Status {
+        /// Require an exact status code.
         #[serde(default)]
         equals: Option<u16>,
+        /// Require the status within an inclusive `[min, max]` range.
         #[serde(default)]
         in_range: Option<[u16; 2]>,
     },
+    /// Assert on a response header. At least one of `equals`/`contains` is set.
     Header {
+        /// Header name (matched case-insensitively).
         name: String,
+        /// Require the header value to equal this string.
         #[serde(default)]
         equals: Option<String>,
+        /// Require the header value to contain this substring.
         #[serde(default)]
         contains: Option<String>,
     },
+    /// Assert the total response time is at most `max`.
     Latency {
+        /// Maximum acceptable response time.
         #[serde(with = "humantime_serde")]
         max: Duration,
     },
+    /// Assert the served TLS certificate has at least `days` until expiry.
     CertMinAge {
+        /// Minimum acceptable days-to-expiry.
         days: u32,
     },
+    /// Assert the body contains this substring (SIMD-scanned, in-daemon; V22).
     BodyContains {
+        /// Substring the body must contain.
         value: String,
     },
+    /// Assert the body does not contain this substring.
     BodyNotContains {
+        /// Substring the body must not contain.
         value: String,
     },
+    /// Assert the body matches this regular expression.
     BodyRegex {
+        /// Regex pattern the body must match.
         pattern: String,
     },
+    /// Assert the body's SHA-256 fingerprint equals this hex digest.
     BodySha256 {
+        /// Expected lower-case hex SHA-256 of the body.
         hex: String,
     },
 }
@@ -131,6 +155,8 @@ pub enum ConfigParseError {
 }
 
 /// Errors from [`load_config`].
+// Variant fields are documented by their `#[error]` messages.
+#[allow(missing_docs)]
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigLoadError {
     /// The config file could not be read.
@@ -147,6 +173,8 @@ pub enum ConfigLoadError {
 
 /// Errors from validating a parsed config (V11). Each variant names the
 /// endpoint at fault so operators can find it.
+// Variant fields are documented by their `#[error]` messages.
+#[allow(missing_docs)]
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ConfigValidateError {
     #[error("endpoint has an empty id")]

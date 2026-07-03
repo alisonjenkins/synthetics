@@ -235,7 +235,7 @@ check. Replace pricey Datadog synthetics.
 | T24 | . | CP writer API (OIDC, per-product scope, hierarchy CRUD) + write validation | I.cp,I.auth,V31,V32,V37 |
 | T25 | . | CP worker API (mTLS, read + change-feed/NOTIFY, version stamp) | I.cp,I.auth,V28,V33 |
 | T26 | . | CP API contract doc (OpenAPI) + validation rules for future TF provider | I.cp,V37 |
-| T27 | . | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
+| T27 | x | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
 | T28 | . | Helm chart (worker + CP) + KIND local dev + CloudNativePG for DB | I.cp,I.store |
 | T29 | . | mock Datadog (DogStatsD receiver + viewer) for local/test | I.ddagent,V39 |
 
