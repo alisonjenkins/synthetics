@@ -43,8 +43,12 @@ check. Replace pricey Datadog synthetics.
 - `I.http` — HTTP target endpoints under test.
 - `I.tcp` — TCP target endpoints under test.
 - `I.ws` — WebSocket targets. Future.
-- `I.assert` — per-endpoint assertions (status, body, header, latency
-  threshold, cert min-age). Drive ok/fail outcome.
+- `I.assert` — per-endpoint assertions. Drive ok/fail outcome. Types:
+  `status` (code/range), `header` (name→match), `latency` (threshold),
+  `cert_min_age` (TLS days-to-expiry), and body checks — `body_contains`,
+  `body_not_contains`, `body_regex`, `body_sha256` (fingerprint vs
+  known-good). Body checks catch "200 but wrong content" (e.g. nginx
+  default page instead of login).
 - `I.sink` — `MetricSink` trait. Swappable metric backend.
 - `I.ddagent` — local Datadog agent DogStatsD socket. First `I.sink` impl.
 - `I.log` — `tracing` subscriber: structured JSON events + spans to
@@ -99,6 +103,10 @@ check. Replace pricey Datadog synthetics.
   cannot starve healthy targets of concurrency/execution.
 - V21 — panic in one check task is caught + isolated; that check = failure
   outcome, daemon + all other checks keep running. No cascade.
+- V22 — response bodies asserted in-daemon only. Raw body never pushed to
+  any sink or log. Sink/log receive assertion outcomes + low-cardinality
+  assertion id (which check failed), never body content. Cost + PII guard.
+  Body scans (`body_contains`/`body_not_contains`) use SIMD path (V6).
 
 ## §T — tasks
 
@@ -113,11 +121,11 @@ check. Replace pricey Datadog synthetics.
 | T7 | . | scheduler: per-endpoint interval, bounded concurrency, fault isolation | V5,V8,V20,V21 |
 | T15 | . | fault-isolation harness: timeout, panic catch, no-starvation test | V19,V20,V21 |
 | T8 | . | hot reload: watch/signal, diff config, no missed check | I.config,I.ctl,V3,V4,V11 |
-| T9 | . | SIMD hot paths (response scan/compare) + scalar fallback | V6 |
+| T9 | . | SIMD hot paths (body_contains scan, header scan) + scalar fallback | V6,V22 |
 | T10 | . | daemon wiring: startup, graceful shutdown | V4 |
 | T12 | . | `tracing` subscriber: JSON structured logs + span wiring | I.log,V14 |
 | T13 | . | benchmarks for hot paths (SIMD vs scalar, scheduler, check) | V16,V6,V15 |
-| T14 | . | assertion engine (status/body/header/latency/cert-age) | I.assert,V18,V9 |
+| T14 | . | assertion engine (status/header/latency/cert-age + body contains/regex/sha256) | I.assert,V18,V9,V22 |
 | T11 | . | WebSocket check (future) | I.ws,V1,V9 |
 
 ## §B — bugs
