@@ -215,7 +215,7 @@ check. Replace pricey Datadog synthetics.
 | T13 | . | benchmarks for hot paths (SIMD vs scalar, scheduler, check) | V16,V6,V15 |
 | T14 | . | assertion engine (status/header/latency/cert-age + body contains/regex/sha256) | I.assert,V18,V9,V22 |
 | T11 | . | WebSocket check (future) | I.ws,V1,V9,V35,V36 |
-| T16 | . | refactor `MetricSink` to static dispatch (RPITIT+Send, drop async_trait; enum-dispatch deferred to 2nd backend per V36) | V35,V36 |
+| T16 | x | refactor `MetricSink` to static dispatch (RPITIT+Send, drop async_trait; enum-dispatch deferred to 2nd backend per V36) | V35,V36 |
 | T17 | . | `Check` trait (static dispatch) unifying protocol executors | V35,V36 |
 | T18 | . | `ConfigSource` trait + FileConfigSource (wraps T2) + scheduler/reload consume it | I.configsource,V24,V35 |
 | T19 | . | rendezvous-hash ownership + worker identity + region/location match | V26,V27,V32,V33 |

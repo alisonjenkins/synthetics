@@ -10,7 +10,6 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use async_trait::async_trait;
 use tokio::net::UdpSocket;
 
 use crate::metric::{CheckDetail, CheckReport, FailureKind, MetricSink, Outcome, SinkError};
@@ -116,7 +115,6 @@ impl DogStatsdSink {
     }
 }
 
-#[async_trait]
 impl MetricSink for DogStatsdSink {
     async fn record(&self, report: &CheckReport) -> Result<(), SinkError> {
         let lines = encode(report, &self.namespace);

@@ -56,16 +56,23 @@ async fn mock_sink_records_reports_in_order() {
     assert_eq!(recorded[1].outcome, Outcome::Failure);
 }
 
-#[tokio::test]
-async fn mock_sink_usable_as_trait_object() {
-    // V2: check/scheduler code holds `Arc<dyn MetricSink>` and only calls record.
-    let sink: Arc<dyn MetricSink> = Arc::new(MockSink::new());
-    sink.record(&http_success_report()).await.unwrap();
+/// A generic emitter — the shape real consumers take: static dispatch over
+/// `M: MetricSink`, never `dyn` (V2, V35).
+async fn emit<M: MetricSink>(sink: &M, report: &CheckReport) {
+    sink.record(report).await.unwrap();
+}
 
-    // Downcast-free observation: the concrete mock exposes its buffer, but the
-    // emission path only ever saw the trait.
+#[tokio::test]
+async fn mock_sink_usable_via_generic_and_arc() {
+    // V35: consumers hold a generic `M: MetricSink` (monomorphized) and share
+    // it as `Arc<Concrete>` — never `Arc<dyn MetricSink>`.
+    let sink = Arc::new(MockSink::new());
+    emit(sink.as_ref(), &http_success_report()).await;
+
     let clone = Arc::clone(&sink);
-    clone.record(&http_success_report()).await.unwrap();
+    emit(clone.as_ref(), &http_success_report()).await;
+
+    assert_eq!(sink.len(), 2);
 }
 
 #[tokio::test]

@@ -15,7 +15,6 @@ name = "synthetics"
 path = "src/main.rs"
 
 [dependencies]
-async-trait = "0.1.89"
 humantime-serde = "1.1.1"
 regex = "1.12.4"
 serde = { version = "1.0.228", features = ["derive"] }

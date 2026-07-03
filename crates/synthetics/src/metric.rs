@@ -3,17 +3,17 @@
 //! [`CheckReport`] is a backend-neutral record of one check's result carrying
 //! the full Datadog-parity signal set (V9, V17). [`MetricSink`] is the single
 //! trait through which the rest of the program emits — check and scheduler code
-//! hold a `Arc<dyn MetricSink>` and never touch a backend directly (V2, ADR
-//! 0005). Concrete backends (DogStatsD, ...) live in the `sink` module; tests
-//! use [`MockSink`].
+//! are generic over `M: MetricSink` and share it as `Arc<M>` (static dispatch,
+//! never `dyn`; ADR 0021), and never touch a backend directly (V2, ADR 0005).
+//! Concrete backends (DogStatsD, ...) live in the `sink` module; tests use
+//! [`MockSink`].
 //!
 //! Per V22, assertion results are carried as low-cardinality ids plus a
 //! pass/fail flag — never the response body.
 
+use std::future::Future;
 use std::sync::Mutex;
 use std::time::Duration;
-
-use async_trait::async_trait;
 
 /// The result of one check: success or failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,12 +130,16 @@ pub enum SinkError {
 }
 
 /// The one path through which checks emit metrics (I.sink, V2).
-#[async_trait]
+///
+/// Static dispatch (ADR 0021, V35): `record` is a native async fn in the trait
+/// (RPITIT) with an explicit `Send` bound on the returned future so consumers
+/// can spawn it. Consumers take `impl MetricSink` / a generic `M: MetricSink`,
+/// not `dyn MetricSink` — no per-emit boxing or vtable on the hot path.
 pub trait MetricSink: Send + Sync {
     /// Record one check's report. Implementations should be resilient: a backend
     /// hiccup should degrade (drop + count) rather than propagate where possible
     /// (V13).
-    async fn record(&self, report: &CheckReport) -> Result<(), SinkError>;
+    fn record(&self, report: &CheckReport) -> impl Future<Output = Result<(), SinkError>> + Send;
 }
 
 /// An in-memory [`MetricSink`] for tests: records every report it is given.
@@ -171,7 +175,6 @@ impl MockSink {
     }
 }
 
-#[async_trait]
 impl MetricSink for MockSink {
     async fn record(&self, report: &CheckReport) -> Result<(), SinkError> {
         match self.recorded.lock() {
