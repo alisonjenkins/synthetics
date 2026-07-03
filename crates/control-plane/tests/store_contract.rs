@@ -92,3 +92,27 @@ async fn pg_store_satisfies_contract() {
     let store = PgStore::connect(&url).await.unwrap();
     exercise(&store).await;
 }
+
+#[tokio::test]
+async fn concurrent_migrations_are_safe() {
+    // Several control-plane replicas starting at once (a rolling upgrade) must
+    // not race their migrations — the advisory lock serializes them.
+    use testcontainers::runners::AsyncRunner;
+    use testcontainers_modules::postgres::Postgres;
+
+    let container = Postgres::default().start().await.unwrap();
+    let port = container.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
+
+    let (a, b, c) = tokio::join!(
+        PgStore::connect(&url),
+        PgStore::connect(&url),
+        PgStore::connect(&url),
+    );
+    let store = a.expect("connect a");
+    b.expect("connect b");
+    c.expect("connect c");
+
+    // Schema is intact and usable.
+    assert_eq!(store.config_version().await.unwrap(), 0);
+}

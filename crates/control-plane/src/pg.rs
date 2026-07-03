@@ -69,15 +69,28 @@ impl PgStore {
         Self { pool }
     }
 
-    /// Apply the schema (idempotent).
+    /// Apply the schema (idempotent). Guarded by a transaction-scoped advisory
+    /// lock so that during a rolling upgrade several control-plane replicas
+    /// starting at once serialize their migrations rather than racing — one
+    /// applies, the rest wait and then find everything already present. The lock
+    /// releases automatically when the transaction ends.
     pub async fn migrate(&self) -> Result<(), StoreError> {
-        sqlx::raw_sql(SCHEMA)
-            .execute(&self.pool)
+        let mut tx = self.pool.begin().await.map_err(backend)?;
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(MIGRATION_LOCK_KEY)
+            .execute(&mut *tx)
             .await
             .map_err(backend)?;
-        Ok(())
+        sqlx::raw_sql(SCHEMA)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        tx.commit().await.map_err(backend)
     }
 }
+
+/// Arbitrary fixed key identifying the schema-migration advisory lock.
+const MIGRATION_LOCK_KEY: i64 = 0x53_59_4e_54_48_00; // "SYNTH"
 
 impl ConfigStore for PgStore {
     async fn upsert_node(&self, node: Node) -> Result<(), StoreError> {

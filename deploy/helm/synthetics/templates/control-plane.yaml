@@ -7,6 +7,8 @@ metadata:
     app.kubernetes.io/component: control-plane
 spec:
   replicas: {{ .Values.controlPlane.replicas }}
+  strategy:
+    {{- toYaml .Values.controlPlane.strategy | nindent 4 }}
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}
@@ -17,6 +19,7 @@ spec:
         {{- include "synthetics.labels" . | nindent 8 }}
         app.kubernetes.io/component: control-plane
     spec:
+      terminationGracePeriodSeconds: {{ .Values.controlPlane.terminationGracePeriodSeconds }}
       containers:
         - name: control-plane
           image: "{{ .Values.image.registry }}/{{ .Values.image.controlPlane.repository }}:{{ .Values.image.controlPlane.tag }}"

@@ -12,7 +12,23 @@ image:
     tag: latest
 
 controlPlane:
+  # Run >= 2 replicas for zero-downtime upgrades. The data plane is unaffected
+  # by CP downtime regardless (workers run cached config, V29) — this is only for
+  # uninterrupted API availability.
   replicas: 1
+  # Bring a new pod to Ready before removing an old one (needs replicas >= 2 to
+  # be truly zero-downtime; the readiness probe gates traffic).
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  # In-flight requests drain on SIGTERM (axum graceful shutdown). Measured
+  # worst case: a /checks resolve of 10k endpoints is ~20ms (~100ms at 50k) —
+  # there are no streaming/long-poll/long-running requests. 10s is generous
+  # headroom; the pod actually exits within ~0.1s of draining, so this only
+  # bounds the SIGKILL fallback for a stuck process.
+  terminationGracePeriodSeconds: 10
   listen: "0.0.0.0:8080"
   logFormat: json
   # Writer credentials (token → product). For local/dev only; production uses OIDC.
