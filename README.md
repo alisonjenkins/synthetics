@@ -124,6 +124,21 @@ rendezvous hash, pull from the control plane, and survive its outage on cached
 config. The CP↔worker HTTP contract is in
 [`docs/control-plane-api.yaml`](docs/control-plane-api.yaml).
 
-Remaining: the Kubernetes deploy stack (Helm/KIND/CloudNativePG), a local mock
-Datadog, and WebSocket checks. See `SPEC.md` for the task list and `docs/adr/`
-for the decisions behind the design.
+The **deploy stack** is built and verified on a real cluster: a Nix flake builds
+both binaries and their OCI images reproducibly; a Helm chart deploys the CP,
+the worker fleet, and a CloudNativePG Postgres to KIND (with a local registry),
+orchestrated by `just` + Tilt.
+
+Remaining: a local mock Datadog receiver and WebSocket checks.
+
+### Deploy locally
+
+```bash
+nix develop          # devshell with the full toolchain
+just up              # KIND + registry + CloudNativePG + nix images + Helm deploy
+```
+
+This stands up the control plane, a 3-pod worker fleet, and Postgres. Author a
+check against the control plane (writer API) and watch a single worker pick it
+up by rendezvous ownership. `just down` tears it all down. See `SPEC.md` for the
+task list and `docs/` for the API contract and ADRs.
