@@ -58,10 +58,13 @@ impl StaticTokenAuth {
 impl WriterAuth for StaticTokenAuth {
     async fn authenticate(&self, token: &str) -> Result<WriterIdentity, AuthError> {
         match self.tokens.get(token) {
-            Some(product) => Ok(WriterIdentity {
+            // Fail closed on an empty product (e.g. a misconfigured `token:`
+            // mapping): an empty product would match any id with an empty first
+            // path segment (`/foo`), so it must never authorize anything (#12).
+            Some(product) if !product.is_empty() => Ok(WriterIdentity {
                 product: product.clone(),
             }),
-            None => Err(AuthError::Invalid),
+            _ => Err(AuthError::Invalid),
         }
     }
 }
@@ -96,5 +99,26 @@ impl WorkerAuth for AcceptWorkerAuth {
                 worker_id: credential.to_string(),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Panicking is the failure signal in tests (ADR 0008).
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+
+    #[tokio::test]
+    async fn empty_product_token_is_rejected() {
+        // A token mapped to an empty product (a `token:` misconfiguration) must
+        // not authenticate — otherwise it would scope-match `/`-prefixed ids.
+        let auth = StaticTokenAuth::new().with("t", "");
+        assert!(auth.authenticate("t").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn normal_token_authenticates_to_its_product() {
+        let auth = StaticTokenAuth::new().with("t", "web");
+        assert_eq!(auth.authenticate("t").await.unwrap().product, "web");
     }
 }

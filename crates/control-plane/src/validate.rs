@@ -32,6 +32,7 @@ pub fn validate_node(node: &Node) -> Result<(), FieldError> {
     if node.id.trim().is_empty() {
         return Err(err("id", "must not be empty"));
     }
+    reject_bad_id(&node.id, "id")?;
     if node.kind.trim().is_empty() {
         return Err(err("kind", "must not be empty"));
     }
@@ -46,9 +47,11 @@ pub fn validate_endpoint(endpoint: &Endpoint) -> Result<(), FieldError> {
     if endpoint.id.trim().is_empty() {
         return Err(err("id", "must not be empty"));
     }
+    reject_bad_id(&endpoint.id, "id")?;
     if endpoint.environment.trim().is_empty() {
         return Err(err("environment", "must not be empty"));
     }
+    reject_bad_id(&endpoint.environment, "environment")?;
     match &endpoint.target {
         TargetSpec::Http(http) => {
             let url = url::Url::parse(&http.url)
@@ -109,6 +112,19 @@ fn reject_internal_literal(
     Ok(())
 }
 
+/// Reject an id with an empty path segment — a leading `/`, a trailing `/`, or a
+/// `//` — since the first segment is the product scope and an empty one would
+/// collide with an empty-product token (#12).
+fn reject_bad_id(id: &str, field: &str) -> Result<(), FieldError> {
+    if id.split('/').any(str::is_empty) {
+        return Err(err(
+            field,
+            "must not start or end with '/' or contain an empty path segment",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_assertion(index: usize, assertion: &Assertion) -> Result<(), FieldError> {
     let field = |suffix: &str| format!("assertions[{index}].{suffix}");
     match assertion {
@@ -161,4 +177,37 @@ fn validate_assertion(index: usize, assertion: &Assertion) -> Result<(), FieldEr
         | Assertion::BodyNotContains { .. } => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    // Panicking is the failure signal in tests (ADR 0008).
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use crate::model::{Node, NodeDefaults};
+
+    fn node(id: &str) -> Node {
+        Node {
+            id: id.into(),
+            kind: "product".into(),
+            name: "n".into(),
+            parent: None,
+            defaults: NodeDefaults::default(),
+        }
+    }
+
+    #[test]
+    fn rejects_ids_with_empty_path_segments() {
+        // Leading slash → empty first segment (collides with an empty-product
+        // token); also trailing slash and doubled slash.
+        for bad in ["/web", "web/", "web//prod"] {
+            let e = validate_node(&node(bad)).unwrap_err();
+            assert_eq!(e.field, "id", "{bad:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn accepts_a_normal_hierarchical_id() {
+        assert!(validate_node(&node("web/prod")).is_ok());
+    }
 }
