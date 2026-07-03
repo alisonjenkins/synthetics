@@ -83,7 +83,7 @@ pub struct TcpTarget {
 /// only; the body never leaves the process (V22). `body_regex` / `body_sha256`
 /// hold their spec verbatim and are compiled/checked at evaluation time (T14);
 /// validation here proves they are well-formed (V11).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Assertion {
     /// Assert on the HTTP status code. Exactly one of `equals`/`in_range` is set.

@@ -1,0 +1,119 @@
+//! Control-plane authoring model (T22).
+//!
+//! The config is authored over a hierarchy of [`Node`]s with a generic parent
+//! reference (ADR 0017), so levels can be added above product (e.g. an
+//! organization) without a schema change. Each [`Endpoint`] hangs off an
+//! environment node and may override inherited defaults. Assertions reuse the
+//! worker crate's [`Assertion`] type. Resolution of the hierarchy into flat
+//! worker checks is a separate step (T23).
+
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use synthetics::config::Assertion;
+
+/// A node in the config hierarchy (organization, product, customer, environment,
+/// ...). The `kind` is free-form so the hierarchy can grow new levels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Node {
+    /// Stable unique id (e.g. a hierarchical path like `web/globex`).
+    pub id: String,
+    /// Node kind: `org`, `product`, `customer`, `environment`, ...
+    pub kind: String,
+    /// Human-readable name.
+    pub name: String,
+    /// Parent node id; `None` for a root.
+    pub parent: Option<String>,
+    /// Defaults inherited by descendants (endpoints may override).
+    #[serde(default)]
+    pub defaults: NodeDefaults,
+}
+
+/// Defaults set at a hierarchy level and inherited downward.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeDefaults {
+    /// Default check interval for descendants.
+    #[serde(default, with = "humantime_serde::option")]
+    pub interval: Option<Duration>,
+    /// Default per-check timeout for descendants.
+    #[serde(default, with = "humantime_serde::option")]
+    pub timeout: Option<Duration>,
+    /// Tags contributed to every descendant endpoint's metrics.
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+/// An endpoint to check, hanging off an environment node.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Endpoint {
+    /// Stable unique id — the hierarchical path (rendezvous + diff key, V32).
+    pub id: String,
+    /// Id of the environment node this endpoint belongs to.
+    pub environment: String,
+    /// Human-readable name.
+    pub name: String,
+    /// What to check.
+    pub target: TargetSpec,
+    /// Interval override (falls back to inherited defaults).
+    #[serde(default, with = "humantime_serde::option")]
+    pub interval: Option<Duration>,
+    /// Timeout override (falls back to inherited defaults).
+    #[serde(default, with = "humantime_serde::option")]
+    pub timeout: Option<Duration>,
+    /// Tags added on top of inherited tags.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Assertions evaluated each check.
+    #[serde(default)]
+    pub assertions: Vec<Assertion>,
+}
+
+/// A protocol-specific target specification (pre-resolution / pre-validation).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TargetSpec {
+    /// An HTTP(S) target.
+    Http(HttpSpec),
+    /// A TCP target.
+    Tcp(TcpSpec),
+}
+
+/// HTTP target specification as authored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HttpSpec {
+    /// Target URL.
+    pub url: String,
+    /// HTTP method; defaults to `GET` when absent.
+    #[serde(default)]
+    pub method: Option<String>,
+    /// Request headers.
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
+    /// Optional request body.
+    #[serde(default)]
+    pub body: Option<String>,
+    /// Skip TLS verification for self-signed internal endpoints.
+    #[serde(default)]
+    pub allow_insecure: bool,
+}
+
+/// TCP target specification as authored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TcpSpec {
+    /// Hostname or IP to connect to.
+    pub host: String,
+    /// TCP port to connect to.
+    pub port: u16,
+}
+
+/// A registered worker and its last heartbeat (I.membership).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Worker {
+    /// Unique worker id.
+    pub id: String,
+    /// Region the worker runs in (checks run only on matching-region workers).
+    pub region: String,
+    /// Last heartbeat, Unix milliseconds.
+    pub last_heartbeat_ms: i64,
+}

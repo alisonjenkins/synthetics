@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/synthetics"]
+members = ["crates/synthetics", "crates/control-plane"]
 
 [workspace.package]
 version = "0.1.0"

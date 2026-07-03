@@ -31,3 +31,4 @@ Format: [MADR](https://adr.github.io/madr/)-lite.
 | [0021](0021-static-dispatch-policy.md) | Static dispatch on runtime/hot paths (no `dyn`/`async_trait`) | Accepted |
 | [0022](0022-design-for-change.md) | Design for change — seams on known axes only, anti-gold-plating | Accepted |
 | [0023](0023-validation-defense-in-depth.md) | Validation defense-in-depth (plan-time provider + authoritative CP) | Accepted |
+| [0024](0024-hybrid-jsonb-schema.md) | Hybrid jsonb + scalar-column schema for the config store | Accepted |
