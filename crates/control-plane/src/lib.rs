@@ -8,8 +8,10 @@
 pub mod memory;
 pub mod model;
 pub mod pg;
+pub mod resolve;
 pub mod store;
 
 pub use memory::MemoryStore;
 pub use pg::PgStore;
+pub use resolve::{resolve, ResolveError, ResolvedCheck};
 pub use store::{ConfigStore, StoreError};
