@@ -172,13 +172,22 @@ async fn endpoint_loop<M: MetricSink + 'static>(
         };
 
         let report = run_check_isolated(Arc::clone(&endpoint)).await;
+        tracing::info!(
+            endpoint = %report.endpoint_id,
+            outcome = ?report.outcome,
+            failure = ?report.failure,
+            latency_ms = report.duration.as_secs_f64() * 1000.0,
+            "check completed",
+        );
         let _ = sink.record(&report).await;
         drop(permit);
     }
 }
 
 /// Run one endpoint's check in a spawned task and convert a panic into a failure
-/// report (V21) so the scheduler and other endpoints are unaffected.
+/// report (V21) so the scheduler and other endpoints are unaffected. Runs inside
+/// a span carrying the endpoint id (V14).
+#[tracing::instrument(skip_all, fields(endpoint = %endpoint.id))]
 async fn run_check_isolated(endpoint: Arc<EndpointConfig>) -> CheckReport {
     let id = endpoint.id.clone();
     let tags = endpoint.tags.clone();

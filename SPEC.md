@@ -220,7 +220,7 @@ check. Replace pricey Datadog synthetics.
 | T8 | x | hot reload: watch/signal, diff config, no missed check | I.config,I.ctl,V3,V4,V11 |
 | T9 | . | SIMD hot paths (body_contains scan, header scan) + scalar fallback | V6,V22 |
 | T10 | . | daemon wiring: startup, graceful shutdown | V4 |
-| T12 | . | `tracing` subscriber: JSON structured logs + span wiring | I.log,V14 |
+| T12 | x | `tracing` subscriber: JSON structured logs + span wiring | I.log,V14 |
 | T13 | . | benchmarks for hot paths (SIMD vs scalar, scheduler, check) | V16,V6,V15 |
 | T14 | x | assertion engine (status/header/latency/cert-age + body contains/regex/sha256) | I.assert,V18,V9,V22 |
 | T11 | . | WebSocket check (future) | I.ws,V1,V9,V35,V36 |

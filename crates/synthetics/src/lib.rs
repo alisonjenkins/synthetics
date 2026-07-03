@@ -19,6 +19,7 @@ pub mod metric;
 pub mod scheduler;
 pub mod sink;
 pub mod source;
+pub mod telemetry;
 pub mod worker;
 
 #[cfg(test)]
