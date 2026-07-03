@@ -18,6 +18,7 @@ pub mod config;
 pub mod metric;
 pub mod scheduler;
 pub mod sink;
+pub mod source;
 
 #[cfg(test)]
 mod tests {

@@ -13,7 +13,6 @@ use synthetics::metric::{MockSink, Outcome};
 use synthetics::scheduler::Scheduler;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
-use tokio::sync::watch;
 use url::Url;
 
 /// A TCP server that accepts and reads but never responds — hangs every check.
@@ -71,14 +70,11 @@ async fn healthy_endpoint_fires_on_schedule_despite_hung_neighbor() {
 
     let sink = Arc::new(MockSink::new());
     // Concurrency ample so the hung check cannot starve the healthy one.
-    let sched = Scheduler::new(Arc::clone(&sink), 16);
-    let (tx, rx) = watch::channel(false);
+    let mut sched = Scheduler::new(Arc::clone(&sink), 16);
+    sched.reconcile(vec![healthy, hung]);
 
-    let handle = tokio::spawn(sched.run(vec![healthy, hung], rx));
     tokio::time::sleep(Duration::from_millis(300)).await;
-    tx.send(true).unwrap();
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
-
+    // The hung check holds its permit; don't wait on it — snapshot and stop.
     let reports = sink.reports();
     let healthy_fires = reports
         .iter()

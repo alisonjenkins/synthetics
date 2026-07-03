@@ -9,11 +9,13 @@
 //! failure report — the daemon and all other checks survive (V21). Static
 //! dispatch throughout: generic over `M: MetricSink`, no `dyn` (V35).
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{watch, Semaphore};
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::config::{EndpointConfig, Target};
@@ -21,41 +23,107 @@ use crate::metric::{
     CheckDetail, CheckReport, FailureKind, HttpDetail, MetricSink, Outcome, TcpDetail,
 };
 
-/// Schedules and runs checks for a set of endpoints, emitting each result to a
-/// [`MetricSink`].
+/// A running per-endpoint loop and the state needed to stop or diff it.
+struct Running {
+    config: Arc<EndpointConfig>,
+    stop: watch::Sender<bool>,
+    handle: JoinHandle<()>,
+}
+
+/// Schedules and runs checks for a live, reconfigurable set of endpoints,
+/// emitting each result to a [`MetricSink`]. Each endpoint runs as an
+/// independent loop; [`reconcile`](Scheduler::reconcile) adds, removes, and
+/// restarts loops to match a desired set without disturbing unchanged endpoints
+/// (V3).
 pub struct Scheduler<M> {
     sink: Arc<M>,
     concurrency: Arc<Semaphore>,
     epoch: Instant,
+    running: HashMap<String, Running>,
 }
 
 impl<M: MetricSink + 'static> Scheduler<M> {
     /// Create a scheduler emitting to `sink`, with at most `max_concurrency`
-    /// checks in flight at once (ADR 0006).
+    /// checks in flight at once (ADR 0006). Starts with no endpoints.
     pub fn new(sink: Arc<M>, max_concurrency: usize) -> Self {
         Self {
             sink,
             concurrency: Arc::new(Semaphore::new(max_concurrency.max(1))),
             epoch: Instant::now(),
+            running: HashMap::new(),
         }
     }
 
-    /// Run every endpoint on its interval until `shutdown` flips to `true`.
-    /// Returns once all per-endpoint loops have stopped. In-flight checks are
-    /// allowed to finish.
-    pub async fn run(self, endpoints: Vec<Arc<EndpointConfig>>, shutdown: watch::Receiver<bool>) {
-        let mut handles = Vec::with_capacity(endpoints.len());
-        for endpoint in endpoints {
-            let sink = Arc::clone(&self.sink);
-            let sem = Arc::clone(&self.concurrency);
-            let epoch = self.epoch;
-            let shutdown = shutdown.clone();
-            handles.push(tokio::spawn(endpoint_loop(
-                endpoint, sink, sem, epoch, shutdown,
-            )));
+    /// Reconcile the running loops to `desired` (V3, V4): start loops for added
+    /// endpoints, stop loops for removed ones, restart loops whose config
+    /// changed, and leave unchanged endpoints running untouched — so their
+    /// schedule continues with no missed or doubled tick across a reload.
+    pub fn reconcile(&mut self, desired: Vec<Arc<EndpointConfig>>) {
+        use std::collections::HashSet;
+        let desired_ids: HashSet<&str> = desired.iter().map(|e| e.id.as_str()).collect();
+
+        // Stop endpoints no longer desired.
+        let stale: Vec<String> = self
+            .running
+            .keys()
+            .filter(|id| !desired_ids.contains(id.as_str()))
+            .cloned()
+            .collect();
+        for id in stale {
+            if let Some(running) = self.running.remove(&id) {
+                let _ = running.stop.send(true);
+            }
         }
-        for handle in handles {
-            let _ = handle.await;
+
+        // Add new endpoints and restart changed ones; leave unchanged as-is.
+        for endpoint in desired {
+            match self.running.get(&endpoint.id) {
+                Some(running) if *running.config == *endpoint => {
+                    // Unchanged: keep its loop and its next-fire time (V3).
+                }
+                _ => {
+                    if let Some(old) = self.running.remove(&endpoint.id) {
+                        let _ = old.stop.send(true);
+                    }
+                    self.start(endpoint);
+                }
+            }
+        }
+    }
+
+    fn start(&mut self, endpoint: Arc<EndpointConfig>) {
+        let (stop, rx) = watch::channel(false);
+        let handle = tokio::spawn(endpoint_loop(
+            Arc::clone(&endpoint),
+            Arc::clone(&self.sink),
+            Arc::clone(&self.concurrency),
+            self.epoch,
+            rx,
+        ));
+        let id = endpoint.id.clone();
+        self.running.insert(
+            id,
+            Running {
+                config: endpoint,
+                stop,
+                handle,
+            },
+        );
+    }
+
+    /// The ids of currently running endpoints, sorted (for inspection/tests).
+    pub fn running_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.running.keys().cloned().collect();
+        ids.sort();
+        ids
+    }
+
+    /// Stop every endpoint loop and wait for them to exit. In-flight checks are
+    /// allowed to finish.
+    pub async fn shutdown(mut self) {
+        for (_, running) in self.running.drain() {
+            let _ = running.stop.send(true);
+            let _ = running.handle.await;
         }
     }
 }
