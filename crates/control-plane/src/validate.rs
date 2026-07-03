@@ -39,6 +39,13 @@ pub fn validate_node(node: &Node) -> Result<(), FieldError> {
     if node.name.trim().is_empty() {
         return Err(err("name", "must not be empty"));
     }
+    // kind + name are emitted as the auto tag `<kind>:<name>`, and the defaults
+    // tags flow straight to metrics — all must be metric-safe (#13).
+    reject_metric_unsafe(&node.kind, "kind")?;
+    reject_metric_unsafe(&node.name, "name")?;
+    for tag in &node.defaults.tags {
+        reject_metric_unsafe(tag, "defaults.tags")?;
+    }
     Ok(())
 }
 
@@ -52,6 +59,12 @@ pub fn validate_endpoint(endpoint: &Endpoint) -> Result<(), FieldError> {
         return Err(err("environment", "must not be empty"));
     }
     reject_bad_id(&endpoint.environment, "environment")?;
+    // id is emitted as `endpoint:<id>` and each tag joins the `#tags` list —
+    // both must be metric-safe (#13).
+    reject_metric_unsafe(&endpoint.id, "id")?;
+    for tag in &endpoint.tags {
+        reject_metric_unsafe(tag, "tags")?;
+    }
     match &endpoint.target {
         TargetSpec::Http(http) => {
             let url = url::Url::parse(&http.url)
@@ -120,6 +133,19 @@ fn reject_bad_id(id: &str, field: &str) -> Result<(), FieldError> {
         return Err(err(
             field,
             "must not start or end with '/' or contain an empty path segment",
+        ));
+    }
+    Ok(())
+}
+
+/// Reject a value that would corrupt or inject DogStatsD line protocol once it
+/// reaches the metrics as a tag: the tag/line delimiters `,` `|` `#` and any
+/// newline (#13). Ids and tags are emitted verbatim into `name:value|type|#tags`.
+fn reject_metric_unsafe(value: &str, field: &str) -> Result<(), FieldError> {
+    if value.contains([',', '|', '#', '\n', '\r']) {
+        return Err(err(
+            field,
+            "must not contain metric delimiters (',', '|', '#', or a newline)",
         ));
     }
     Ok(())
@@ -209,5 +235,39 @@ mod tests {
     #[test]
     fn accepts_a_normal_hierarchical_id() {
         assert!(validate_node(&node("web/prod")).is_ok());
+    }
+
+    #[test]
+    fn rejects_metric_delimiters_in_node_tags() {
+        // A tag containing a DogStatsD line/tag delimiter could inject a
+        // fabricated metric line downstream.
+        let mut n = node("web");
+        n.defaults.tags = vec!["x|synthetics.fake:1|g".into()];
+        assert!(validate_node(&n).is_err());
+
+        n.defaults.tags = vec!["ok:tag".into()];
+        assert!(validate_node(&n).is_ok(), "a normal key:value tag is fine");
+    }
+
+    #[test]
+    fn rejects_metric_delimiters_in_endpoint_tags() {
+        use crate::model::{Endpoint, TargetSpec, TcpSpec};
+        let ep = Endpoint {
+            id: "web/prod/db".into(),
+            environment: "web/prod".into(),
+            name: "db".into(),
+            target: TargetSpec::Tcp(TcpSpec {
+                host: "h".into(),
+                port: 5432,
+            }),
+            interval: None,
+            timeout: None,
+            tags: vec!["evil,injected:1".into()],
+            assertions: vec![],
+            allow_internal: false,
+            retries: None,
+            retry_backoff: None,
+        };
+        assert!(validate_endpoint(&ep).is_err());
     }
 }
