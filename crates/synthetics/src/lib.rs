@@ -12,6 +12,8 @@
 /// tag source.
 pub const NAME: &str = "synthetics";
 
+pub mod config;
+
 #[cfg(test)]
 mod tests {
     #[test]
