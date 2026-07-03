@@ -223,6 +223,11 @@ async fn put_endpoint<S: ConfigStore, A: WriterAuth>(
     let identity = authenticate(&*state.auth, &headers).await?;
     endpoint.id = id;
     require_scope(&identity, &endpoint.id)?;
+    // The environment is a foreign-key reference whose node's defaults/tags are
+    // inherited into this check. Scope it too, or a writer could point at another
+    // product's node and inherit its (possibly internal) config — a cross-tenant
+    // leak (V31).
+    require_scope(&identity, &endpoint.environment)?;
     validate_endpoint(&endpoint)?;
     state
         .store

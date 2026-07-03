@@ -142,6 +142,24 @@ async fn writing_outside_your_product_is_forbidden() {
 }
 
 #[tokio::test]
+async fn endpoint_environment_pointing_at_another_product_is_forbidden() {
+    let app = app();
+    // Id is inside t-web's scope, but the environment references another
+    // product's node. Inheritance would pull that node's config/tags into this
+    // check — a cross-tenant leak. Must be forbidden, not just id-scoped.
+    let (status, _) = send(
+        &app,
+        put(
+            "/endpoints/web/prod/db",
+            Some("t-web"),
+            &tcp_endpoint("web/prod/db", "data/prod", 5432),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn invalid_endpoint_is_rejected_with_field_scoped_error() {
     let app = app();
     // Port 0 is invalid.
