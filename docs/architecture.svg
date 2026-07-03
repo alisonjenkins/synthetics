@@ -20,7 +20,7 @@
 
   <!-- Control plane band (in progress) -->
   <rect x="12" y="44" width="936" height="150" class="band"/>
-  <text x="28" y="66" class="lbl">CONTROL PLANE · FLEET  (in progress)</text>
+  <text x="28" y="66" class="lbl">CONTROL PLANE · FLEET  (built · provider + deploy pending)</text>
 
   <rect x="28"  y="80" width="180" height="70" rx="8" class="box future"/>
   <text x="118" y="108" text-anchor="middle" class="t">Terraform / OpenTofu</text>

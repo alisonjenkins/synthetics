@@ -115,8 +115,15 @@ The **single-node worker is complete and runnable**: config → HTTP/TCP checks 
 assertions → DogStatsD, with scheduling, fault isolation, hot reload, and
 structured tracing.
 
-In progress — the **control plane and fleet**: a Terraform/OpenTofu-authored
-config hierarchy (product → customer → environment → endpoint) stored behind a
-`ConfigStore` trait (Postgres), with workers sharding checks by rendezvous hash
-and pulling near-real-time config updates. See `SPEC.md` for the full task list
-and `docs/adr/` for the decisions behind the design.
+The **control plane and fleet** are built: a config hierarchy (product →
+customer → environment → endpoint) stored behind a `ConfigStore` trait
+(Postgres or in-memory), resolved server-side into flat checks; a writer API
+(per-product OIDC scope, field-scoped validation) and a worker API (serve
+resolved checks + live worker-set + heartbeat); and workers that shard checks by
+rendezvous hash, pull from the control plane, and survive its outage on cached
+config. The CP↔worker HTTP contract is in
+[`docs/control-plane-api.yaml`](docs/control-plane-api.yaml).
+
+Remaining: the Kubernetes deploy stack (Helm/KIND/CloudNativePG), a local mock
+Datadog, and WebSocket checks. See `SPEC.md` for the task list and `docs/adr/`
+for the decisions behind the design.
