@@ -40,6 +40,8 @@ pub enum TargetSpec {
     Http(HttpSpec),
     /// A TCP target.
     Tcp(TcpSpec),
+    /// A WebSocket target.
+    Ws(WsSpec),
 }
 
 /// HTTP target specification.
@@ -68,6 +70,16 @@ pub struct TcpSpec {
     pub host: String,
     /// TCP port to connect to.
     pub port: u16,
+}
+
+/// WebSocket target specification.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WsSpec {
+    /// Target URL (`ws`/`wss`).
+    pub url: String,
+    /// Skip TLS verification for self-signed internal `wss` endpoints.
+    #[serde(default)]
+    pub allow_insecure: bool,
 }
 
 /// The `/checks` response: resolved checks plus the version they belong to.

@@ -16,7 +16,7 @@ use serde::Deserialize;
 use url::Url;
 
 use crate::config::{
-    Config, EndpointConfig, HttpTarget, Target, TcpTarget, DEFAULT_MAX_CONCURRENCY,
+    Config, EndpointConfig, HttpTarget, Target, TcpTarget, WsTarget, DEFAULT_MAX_CONCURRENCY,
 };
 use crate::sharding::{self, Worker};
 use crate::source::{ConfigSource, ConfigSourceError};
@@ -177,6 +177,13 @@ fn to_endpoint(check: ResolvedCheck) -> Option<EndpointConfig> {
             host: tcp.host,
             port: tcp.port,
         }),
+        TargetSpec::Ws(ws) => {
+            let url = Url::parse(&ws.url).ok()?;
+            Target::Ws(WsTarget {
+                url,
+                allow_insecure: ws.allow_insecure,
+            })
+        }
     };
     Some(EndpointConfig {
         id: check.id,

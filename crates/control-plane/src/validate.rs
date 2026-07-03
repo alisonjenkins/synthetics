@@ -65,6 +65,13 @@ pub fn validate_endpoint(endpoint: &Endpoint) -> Result<(), FieldError> {
                 return Err(err("target.port", "must be non-zero"));
             }
         }
+        TargetSpec::Ws(ws) => {
+            let url = url::Url::parse(&ws.url)
+                .map_err(|e| err("target.url", &format!("invalid url: {e}")))?;
+            if url.scheme() != "ws" && url.scheme() != "wss" {
+                return Err(err("target.url", "scheme must be ws or wss"));
+            }
+        }
     }
     for (i, assertion) in endpoint.assertions.iter().enumerate() {
         validate_assertion(i, assertion)?;

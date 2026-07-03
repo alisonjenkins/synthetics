@@ -20,7 +20,7 @@ use tokio::time::Instant;
 
 use crate::config::{EndpointConfig, Target};
 use crate::metric::{
-    CheckDetail, CheckReport, FailureKind, HttpDetail, MetricSink, Outcome, TcpDetail,
+    CheckDetail, CheckReport, FailureKind, HttpDetail, MetricSink, Outcome, TcpDetail, WsDetail,
 };
 
 /// A running per-endpoint loop and the state needed to stop or diff it.
@@ -222,6 +222,7 @@ fn empty_detail(target: &Target) -> CheckDetail {
     match target {
         Target::Http(_) => CheckDetail::Http(HttpDetail::default()),
         Target::Tcp(_) => CheckDetail::Tcp(TcpDetail::default()),
+        Target::Ws(_) => CheckDetail::Ws(WsDetail::default()),
     }
 }
 

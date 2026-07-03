@@ -52,6 +52,8 @@ pub enum Target {
     Http(HttpTarget),
     /// A raw TCP endpoint.
     Tcp(TcpTarget),
+    /// A WebSocket endpoint.
+    Ws(WsTarget),
 }
 
 /// An HTTP(S) request to issue and time (I.http).
@@ -77,6 +79,15 @@ pub struct TcpTarget {
     pub host: String,
     /// TCP port to connect to.
     pub port: u16,
+}
+
+/// A WebSocket endpoint whose handshake is timed (I.ws).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WsTarget {
+    /// Target URL (`ws`/`wss`).
+    pub url: Url,
+    /// Skip TLS certificate verification (for internal self-signed `wss`).
+    pub allow_insecure: bool,
 }
 
 /// A per-endpoint assertion (I.assert). Body assertions are evaluated in-daemon
@@ -270,6 +281,7 @@ mod raw {
         pub tags: Vec<String>,
         pub http: Option<RawHttp>,
         pub tcp: Option<RawTcp>,
+        pub ws: Option<RawWs>,
         #[serde(default, rename = "assert")]
         pub assertions: Vec<Assertion>,
     }
@@ -294,6 +306,14 @@ mod raw {
         pub host: String,
         pub port: u16,
     }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(super) struct RawWs {
+        pub url: Url,
+        #[serde(default)]
+        pub allow_insecure: bool,
+    }
 }
 
 fn build_and_validate(raw: raw::RawConfig) -> Result<Config, ConfigValidateError> {
@@ -315,7 +335,7 @@ fn build_and_validate(raw: raw::RawConfig) -> Result<Config, ConfigValidateError
             return Err(ConfigValidateError::DuplicateId { id: ep.id });
         }
 
-        let target = build_target(&ep.id, ep.http, ep.tcp)?;
+        let target = build_target(&ep.id, ep.http, ep.tcp, ep.ws)?;
 
         let interval = ep.interval.unwrap_or(default_interval);
         if interval.is_zero() {
@@ -348,45 +368,65 @@ fn build_target(
     id: &str,
     http: Option<raw::RawHttp>,
     tcp: Option<raw::RawTcp>,
+    ws: Option<raw::RawWs>,
 ) -> Result<Target, ConfigValidateError> {
-    match (http, tcp) {
-        (Some(_), Some(_)) => Err(ConfigValidateError::MultipleTargets { id: id.to_string() }),
-        (None, None) => Err(ConfigValidateError::NoTarget { id: id.to_string() }),
-        (Some(http), None) => {
-            let scheme = http.url.scheme();
-            if scheme != "http" && scheme != "https" {
-                return Err(ConfigValidateError::UnsupportedScheme {
-                    id: id.to_string(),
-                    scheme: scheme.to_string(),
-                });
-            }
-            let mut headers: Vec<(String, String)> = http.headers.into_iter().collect();
-            headers.sort();
-            let method = http
-                .method
-                .map(|m| m.to_uppercase())
-                .unwrap_or_else(|| "GET".to_string());
-            Ok(Target::Http(HttpTarget {
-                url: http.url,
-                method,
-                headers,
-                body: http.body,
-                allow_insecure: http.allow_insecure,
-            }))
-        }
-        (None, Some(tcp)) => {
-            if tcp.host.is_empty() {
-                return Err(ConfigValidateError::EmptyHost { id: id.to_string() });
-            }
-            if tcp.port == 0 {
-                return Err(ConfigValidateError::ZeroPort { id: id.to_string() });
-            }
-            Ok(Target::Tcp(TcpTarget {
-                host: tcp.host,
-                port: tcp.port,
-            }))
-        }
+    match (http, tcp, ws) {
+        (None, None, None) => Err(ConfigValidateError::NoTarget { id: id.to_string() }),
+        (Some(http), None, None) => build_http_target(id, http),
+        (None, Some(tcp), None) => build_tcp_target(id, tcp),
+        (None, None, Some(ws)) => build_ws_target(id, ws),
+        _ => Err(ConfigValidateError::MultipleTargets { id: id.to_string() }),
     }
+}
+
+fn build_http_target(id: &str, http: raw::RawHttp) -> Result<Target, ConfigValidateError> {
+    let scheme = http.url.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err(ConfigValidateError::UnsupportedScheme {
+            id: id.to_string(),
+            scheme: scheme.to_string(),
+        });
+    }
+    let mut headers: Vec<(String, String)> = http.headers.into_iter().collect();
+    headers.sort();
+    let method = http
+        .method
+        .map(|m| m.to_uppercase())
+        .unwrap_or_else(|| "GET".to_string());
+    Ok(Target::Http(HttpTarget {
+        url: http.url,
+        method,
+        headers,
+        body: http.body,
+        allow_insecure: http.allow_insecure,
+    }))
+}
+
+fn build_tcp_target(id: &str, tcp: raw::RawTcp) -> Result<Target, ConfigValidateError> {
+    if tcp.host.is_empty() {
+        return Err(ConfigValidateError::EmptyHost { id: id.to_string() });
+    }
+    if tcp.port == 0 {
+        return Err(ConfigValidateError::ZeroPort { id: id.to_string() });
+    }
+    Ok(Target::Tcp(TcpTarget {
+        host: tcp.host,
+        port: tcp.port,
+    }))
+}
+
+fn build_ws_target(id: &str, ws: raw::RawWs) -> Result<Target, ConfigValidateError> {
+    let scheme = ws.url.scheme();
+    if scheme != "ws" && scheme != "wss" {
+        return Err(ConfigValidateError::UnsupportedScheme {
+            id: id.to_string(),
+            scheme: scheme.to_string(),
+        });
+    }
+    Ok(Target::Ws(WsTarget {
+        url: ws.url,
+        allow_insecure: ws.allow_insecure,
+    }))
 }
 
 fn validate_assertions(id: &str, assertions: &[Assertion]) -> Result<(), ConfigValidateError> {

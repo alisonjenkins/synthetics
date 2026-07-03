@@ -10,8 +10,6 @@
 //! (V1). Static dispatch throughout (V35) — no `dyn`.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
@@ -20,14 +18,11 @@ use hyper::{Method, Request};
 use hyper_util::rt::TokioIo;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{lookup_host, TcpStream};
-use tokio_rustls::rustls::client::danger::{
-    HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
-};
-use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use tokio_rustls::rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
+use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName};
 use tokio_rustls::TlsConnector;
 use url::Url;
 
+use crate::check::tls::{insecure_client_config, secure_client_config};
 use crate::config::HttpTarget;
 
 /// Maximum response body bytes retained for assertions; larger bodies are
@@ -397,88 +392,6 @@ pub fn cert_days_to_expiry(cert: &CertificateDer<'_>) -> Option<i64> {
     let not_after = parsed.validity().not_after.timestamp();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
     Some((not_after - now) / 86_400)
-}
-
-/// Process-wide client config trusting the webpki root store. Built once.
-fn secure_client_config() -> Arc<ClientConfig> {
-    static CFG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
-    CFG.get_or_init(|| {
-        install_ring();
-        let mut roots = RootCertStore::empty();
-        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        Arc::new(
-            ClientConfig::builder()
-                .with_root_certificates(roots)
-                .with_no_client_auth(),
-        )
-    })
-    .clone()
-}
-
-/// Process-wide client config that skips certificate verification, for targets
-/// configured with `allow_insecure` (internal self-signed endpoints). Cert
-/// expiry is still recorded. Built once.
-fn insecure_client_config() -> Arc<ClientConfig> {
-    static CFG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
-    CFG.get_or_init(|| {
-        install_ring();
-        Arc::new(
-            ClientConfig::builder()
-                .dangerous()
-                .with_custom_certificate_verifier(Arc::new(NoCertVerify))
-                .with_no_client_auth(),
-        )
-    })
-    .clone()
-}
-
-fn install_ring() {
-    static ONCE: OnceLock<()> = OnceLock::new();
-    ONCE.get_or_init(|| {
-        let _ = tokio_rustls::rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
-/// Certificate verifier that accepts any certificate. Used only for targets
-/// explicitly opting into `allow_insecure`.
-#[derive(Debug)]
-struct NoCertVerify;
-
-impl ServerCertVerifier for NoCertVerify {
-    fn verify_server_cert(
-        &self,
-        _end_entity: &CertificateDer<'_>,
-        _intermediates: &[CertificateDer<'_>],
-        _server_name: &ServerName<'_>,
-        _ocsp_response: &[u8],
-        _now: UnixTime,
-    ) -> Result<ServerCertVerified, tokio_rustls::rustls::Error> {
-        Ok(ServerCertVerified::assertion())
-    }
-
-    fn verify_tls12_signature(
-        &self,
-        _message: &[u8],
-        _cert: &CertificateDer<'_>,
-        _dss: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, tokio_rustls::rustls::Error> {
-        Ok(HandshakeSignatureValid::assertion())
-    }
-
-    fn verify_tls13_signature(
-        &self,
-        _message: &[u8],
-        _cert: &CertificateDer<'_>,
-        _dss: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, tokio_rustls::rustls::Error> {
-        Ok(HandshakeSignatureValid::assertion())
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        tokio_rustls::rustls::crypto::ring::default_provider()
-            .signature_verification_algorithms
-            .supported_schemes()
-    }
 }
 
 fn build_request(

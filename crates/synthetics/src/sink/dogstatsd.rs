@@ -198,6 +198,23 @@ pub fn encode(report: &CheckReport, namespace: &str) -> Vec<String> {
         CheckDetail::Tcp(tcp) => {
             push_timing(&mut lines, namespace, "tcp.connect_ms", tcp.connect, &tags);
         }
+        CheckDetail::Ws(ws) => {
+            push_timing(&mut lines, namespace, "ws.dns_ms", ws.dns, &tags);
+            push_timing(&mut lines, namespace, "ws.connect_ms", ws.connect, &tags);
+            push_timing(&mut lines, namespace, "ws.tls_ms", ws.tls_handshake, &tags);
+            push_timing(
+                &mut lines,
+                namespace,
+                "ws.handshake_ms",
+                ws.handshake,
+                &tags,
+            );
+            if let Some(days) = ws.cert_days_to_expiry {
+                lines.push(format!(
+                    "{namespace}.ws.cert_days_to_expiry:{days}|g|#{tags}"
+                ));
+            }
+        }
     }
 
     for assertion in &report.assertions {

@@ -8,12 +8,17 @@
 
 pub mod http;
 pub mod tcp;
+pub(crate) mod tls;
+pub mod ws;
 
 use crate::assert::{self, AssertContext};
 use crate::config::{EndpointConfig, Target};
-use crate::metric::{CheckDetail, CheckReport, FailureKind, HttpDetail, Outcome, TcpDetail};
+use crate::metric::{
+    CheckDetail, CheckReport, FailureKind, HttpDetail, Outcome, TcpDetail, WsDetail,
+};
 use http::{HttpCheckError, HttpOutcome};
 use tcp::TcpCheckError;
+use ws::{WsCheckError, WsOutcome};
 
 /// Default redirect cap applied to HTTP endpoints by the orchestrator.
 use http::DEFAULT_MAX_REDIRECTS;
@@ -32,6 +37,10 @@ pub async fn run_endpoint(endpoint: &EndpointConfig) -> CheckReport {
         Target::Tcp(target) => {
             let result = tcp::run_tcp_check(target, endpoint.timeout).await;
             build_tcp_report(endpoint, result)
+        }
+        Target::Ws(target) => {
+            let result = ws::run_ws_check(target, endpoint.timeout).await;
+            build_ws_report(endpoint, result)
         }
     }
 }
@@ -158,5 +167,64 @@ fn tcp_failure_kind(error: &TcpCheckError) -> FailureKind {
         TcpCheckError::Timeout { .. } => FailureKind::Timeout,
         TcpCheckError::Dns { .. } | TcpCheckError::NoAddress { .. } => FailureKind::Dns,
         TcpCheckError::Connect { .. } => FailureKind::Connect,
+    }
+}
+
+fn build_ws_report(
+    endpoint: &EndpointConfig,
+    result: Result<WsOutcome, WsCheckError>,
+) -> CheckReport {
+    match result {
+        Ok(outcome) => {
+            let ctx = AssertContext {
+                status: None,
+                headers: &[],
+                body: &[],
+                response_time: outcome.timings.total,
+                cert_days_to_expiry: outcome.cert_days_to_expiry,
+            };
+            let assertions = assert::evaluate(&endpoint.assertions, &ctx);
+            let passed = assert::all_passed(&assertions);
+            CheckReport {
+                endpoint_id: endpoint.id.clone(),
+                tags: endpoint.tags.clone(),
+                outcome: if passed {
+                    Outcome::Success
+                } else {
+                    Outcome::Failure
+                },
+                duration: outcome.timings.total,
+                detail: CheckDetail::Ws(WsDetail {
+                    dns: outcome.timings.dns,
+                    connect: outcome.timings.connect,
+                    tls_handshake: outcome.timings.tls_handshake,
+                    handshake: outcome.timings.handshake,
+                    cert_days_to_expiry: outcome.cert_days_to_expiry,
+                }),
+                assertions,
+                failure: (!passed).then_some(FailureKind::Assertion),
+            }
+        }
+        Err(error) => CheckReport {
+            endpoint_id: endpoint.id.clone(),
+            tags: endpoint.tags.clone(),
+            outcome: Outcome::Failure,
+            duration: std::time::Duration::ZERO,
+            detail: CheckDetail::Ws(WsDetail::default()),
+            assertions: Vec::new(),
+            failure: Some(ws_failure_kind(&error)),
+        },
+    }
+}
+
+fn ws_failure_kind(error: &WsCheckError) -> FailureKind {
+    match error {
+        WsCheckError::Timeout { .. } => FailureKind::Timeout,
+        WsCheckError::Dns { .. } | WsCheckError::NoAddress { .. } => FailureKind::Dns,
+        WsCheckError::Connect { .. } => FailureKind::Connect,
+        WsCheckError::Tls { .. } | WsCheckError::InvalidDnsName { .. } => FailureKind::Tls,
+        WsCheckError::MissingHost
+        | WsCheckError::UnsupportedScheme { .. }
+        | WsCheckError::Handshake { .. } => FailureKind::Protocol,
     }
 }

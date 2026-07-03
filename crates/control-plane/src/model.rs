@@ -70,7 +70,7 @@ pub struct Endpoint {
 
 // Target specs are the CP↔worker wire types, defined once in the worker crate
 // and re-exported here so both sides share one definition (T26 contract).
-pub use synthetics::wire::{HttpSpec, TargetSpec, TcpSpec};
+pub use synthetics::wire::{HttpSpec, TargetSpec, TcpSpec, WsSpec};
 
 /// A registered worker and its last heartbeat (I.membership).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -31,6 +31,8 @@ pub enum CheckDetail {
     Http(HttpDetail),
     /// Signals from a TCP check.
     Tcp(TcpDetail),
+    /// Signals from a WebSocket check.
+    Ws(WsDetail),
 }
 
 /// Full Datadog-parity signal set for an HTTP check (V17). Every phase timing is
@@ -63,6 +65,21 @@ pub struct HttpDetail {
 pub struct TcpDetail {
     /// TCP connect time.
     pub connect: Option<Duration>,
+}
+
+/// Signals for a WebSocket check (V17): phase timings + cert age.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WsDetail {
+    /// DNS resolution time.
+    pub dns: Option<Duration>,
+    /// TCP connect time.
+    pub connect: Option<Duration>,
+    /// TLS handshake time (`None` for `ws`).
+    pub tls_handshake: Option<Duration>,
+    /// WebSocket upgrade handshake time.
+    pub handshake: Option<Duration>,
+    /// Days until the served TLS certificate expires (`None` for `ws`).
+    pub cert_days_to_expiry: Option<i64>,
 }
 
 /// The outcome of one assertion. `id` is a low-cardinality identifier of *which*

@@ -276,6 +276,7 @@ components:
       oneOf:
         - $ref: "#/components/schemas/HttpSpec"
         - $ref: "#/components/schemas/TcpSpec"
+        - $ref: "#/components/schemas/WsSpec"
       discriminator:
         propertyName: type
 
@@ -299,6 +300,14 @@ components:
         type: { const: tcp }
         host: { type: string }
         port: { type: integer, minimum: 1, maximum: 65535 }
+
+    WsSpec:
+      type: object
+      required: [type, url]
+      properties:
+        type: { const: ws }
+        url: { type: string, description: "ws:// or wss:// URL" }
+        allow_insecure: { type: boolean, default: false }
 
     Assertion:
       type: object
