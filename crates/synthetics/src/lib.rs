@@ -12,6 +12,7 @@
 /// tag source.
 pub const NAME: &str = "synthetics";
 
+pub mod check;
 pub mod config;
 pub mod metric;
 pub mod sink;
