@@ -1,0 +1,18 @@
+{{- if .Values.worker.podDisruptionBudget.enabled }}
+# Cap how many workers a voluntary disruption (node drain / upgrade) can take at
+# once. Individual worker loss is handled by rendezvous resharding (V27); this
+# guards against many going down simultaneously and opening a coverage gap.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "synthetics.fullname" . }}-worker
+  labels:
+    {{- include "synthetics.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  maxUnavailable: {{ .Values.worker.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+{{- end }}

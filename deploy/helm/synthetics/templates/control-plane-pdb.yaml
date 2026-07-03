@@ -1,0 +1,17 @@
+{{- if and .Values.controlPlane.podDisruptionBudget.enabled (gt (int .Values.controlPlane.replicas) 1) }}
+# Only rendered when the control plane runs more than one replica — a PDB on a
+# single-replica workload would block node drains entirely.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "synthetics.cpService" . }}
+  labels:
+    {{- include "synthetics.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  minAvailable: {{ .Values.controlPlane.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: control-plane
+{{- end }}

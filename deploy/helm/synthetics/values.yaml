@@ -19,6 +19,10 @@ controlPlane:
   writerTokens:
     - token: dev-token
       product: web
+  # Only takes effect when replicas > 1 (a PDB on a single replica blocks drains).
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
   # Measured RSS ~7 MiB (Postgres pool + resolving the endpoint set in memory).
   # Grows transiently with the number of endpoints resolved per /checks; 64Mi
   # request / 256Mi limit comfortably covers tens of thousands of endpoints.
@@ -43,6 +47,10 @@ worker:
   heartbeatSecs: 10
   # Credential presented to the control plane (AcceptWorkerAuth: any non-empty).
   cpToken: worker-fleet
+  # Cap simultaneous voluntary evictions; sharding covers individual losses (V27).
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
   # DogStatsD target used when mockDatadog.enabled is false. When the mock is
   # enabled the worker points at it automatically. An unreachable target is
   # dropped gracefully (V13).
