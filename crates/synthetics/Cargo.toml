@@ -1,0 +1,22 @@
+[package]
+name = "synthetics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "High-performance synthetic monitoring daemon (HTTP/TCP checks, hot-reloadable, DogStatsD)."
+
+[lib]
+name = "synthetics"
+path = "src/lib.rs"
+
+[[bin]]
+name = "synthetics"
+path = "src/main.rs"
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true

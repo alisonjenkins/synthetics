@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/synthetics"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "MIT"
+repository = ""
+
+# Clippy gate (ADR 0008, V12): deny panic-on-error in production paths.
+# Inherited by every member via `[lints] workspace = true`.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "unwind" # keep unwind for per-task panic isolation (ADR 0011, V21)

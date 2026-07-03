@@ -104,7 +104,7 @@ check. Replace pricey Datadog synthetics.
 
 | id | st | task | cites |
 |----|----|------|-------|
-| T1 | . | scaffold cargo workspace, CI, test harness, clippy lint gate | V7,V12 |
+| T1 | x | scaffold cargo workspace, CI, test harness, clippy lint gate | V7,V12 |
 | T2 | . | config model + parse (endpoints, intervals, params) | I.config,V1,V11 |
 | T3 | . | `MetricSink` trait + mock/no-op sink for tests | I.sink,V2,V9 |
 | T4 | . | Datadog agent sink (DogStatsD UDP/UDS) | I.ddagent,V2 |

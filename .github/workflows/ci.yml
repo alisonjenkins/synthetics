@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  test:
+    name: fmt + clippy + test + bench-compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain (pinned by rust-toolchain.toml)
+        run: rustup show
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      # V12 / ADR 0008: deny clippy::unwrap_used + expect_used (via workspace lints),
+      # -D warnings promotes every lint to an error.
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo nextest run --all-features
+
+      - name: Doc tests
+        run: cargo test --doc --all-features
+
+      # V16 / ADR 0010: keep benches compiling.
+      - name: Benches compile
+        run: cargo bench --no-run --all-features
