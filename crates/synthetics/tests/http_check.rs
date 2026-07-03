@@ -27,6 +27,91 @@ fn target(url: &str) -> HttpTarget {
     }
 }
 
+#[tokio::test]
+async fn hung_target_connection_is_torn_down_on_timeout() {
+    use tokio::sync::oneshot;
+    // A server that accepts, reads the request, then never responds — the check
+    // must time out. When it gives up, the spawned connection driver must be
+    // aborted and its socket dropped, or every hung target leaks an FD + task.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = oneshot::channel();
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 1024];
+        loop {
+            match sock.read(&mut buf).await {
+                Ok(0) => break,    // client closed the socket
+                Ok(_) => continue, // request bytes arrived; keep hanging
+                Err(_) => break,
+            }
+        }
+        let _ = tx.send(());
+    });
+
+    let err = run_http_check(
+        &target(&format!("http://{addr}/")),
+        Duration::from_millis(300),
+        0,
+        false,
+        &synthetics::net_guard::NetPolicy::unrestricted(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, HttpCheckError::Timeout { .. }), "got {err:?}");
+
+    // If the driver leaked, the socket stays open and the server never sees EOF.
+    tokio::time::timeout(Duration::from_secs(2), rx)
+        .await
+        .expect("connection driver must be torn down, closing the socket")
+        .expect("server task alive");
+}
+
+#[tokio::test]
+async fn keepalive_connection_is_torn_down_after_success() {
+    use tokio::sync::oneshot;
+    // A keep-alive server: it answers the request fully but never closes the
+    // socket. After a successful check the client's connection driver must be
+    // torn down (socket dropped), or one idle FD/task leaks per check until the
+    // server's own idle timeout.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = oneshot::channel();
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 2048];
+        let _ = sock.read(&mut buf).await; // request
+        let _ = sock
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nhi")
+            .await;
+        let _ = sock.flush().await;
+        // Hold the socket open (keep-alive) and wait for the client to close.
+        loop {
+            match sock.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(_) => continue,
+            }
+        }
+        let _ = tx.send(());
+    });
+
+    let out = run_http_check(
+        &target(&format!("http://{addr}/")),
+        Duration::from_secs(5),
+        0,
+        false,
+        &synthetics::net_guard::NetPolicy::unrestricted(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(out.status, 200);
+
+    tokio::time::timeout(Duration::from_secs(2), rx)
+        .await
+        .expect("driver must be torn down after success, closing the keep-alive socket")
+        .expect("server task alive");
+}
+
 /// Serve a fixed raw HTTP/1.1 response to every connection.
 async fn serve_fixed(response: &'static str) -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
