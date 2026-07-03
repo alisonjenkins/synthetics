@@ -58,6 +58,9 @@ check. Replace pricey Datadog synthetics.
   generics/monomorphization, `Arc<Concrete>`, enum-dispatch for
   runtime-selected backends. `dyn`/boxing only in cold paths (startup, error
   `source`).
+- Deployable to Kubernetes via a Helm chart (worker fleet + control plane).
+  Local dev/test on a KIND cluster; CloudNativePG operator provisions the
+  Postgres store for local testing. IaC-first.
 - Rust docs done well: rustdoc on every public item (`missing_docs` lint
   on, `cargo doc` clean), doc examples where useful. Repo `README.md` with
   overview + quickstart + an SVG architecture diagram.
@@ -204,7 +207,7 @@ check. Replace pricey Datadog synthetics.
 | T2 | x | config model + parse (endpoints, intervals, params) | I.config,V1,V11 |
 | T3 | x | `MetricSink` trait + mock/no-op sink for tests | I.sink,V2,V9 |
 | T4 | x | Datadog agent sink (DogStatsD UDP/UDS) | I.ddagent,V2 |
-| T5 | . | HTTP check executor + per-fn error enum + full DD-parity timings + timeouts | I.http,V1,V9,V10,V17,V19,V35,V36 |
+| T5 | ~ | HTTP check executor + per-fn error enum + full DD-parity timings + timeouts | I.http,V1,V9,V10,V17,V19,V35,V36 |
 | T6 | . | TCP check executor + per-fn error enum + connect timing + timeout | I.tcp,V1,V9,V10,V17,V19,V35,V36 |
 | T7 | . | scheduler: per-endpoint interval, bounded concurrency, fault isolation | V5,V8,V20,V21 |
 | T15 | . | fault-isolation harness: timeout, panic catch, no-starvation test | V19,V20,V21 |
@@ -227,6 +230,7 @@ check. Replace pricey Datadog synthetics.
 | T25 | . | CP worker API (mTLS, read + change-feed/NOTIFY, version stamp) | I.cp,I.auth,V28,V33 |
 | T26 | . | CP API contract doc (OpenAPI) + validation rules for future TF provider | I.cp,V37 |
 | T27 | . | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
+| T28 | . | Helm chart (worker + CP) + KIND local dev + CloudNativePG for DB | I.cp,I.store |
 
 ## §B — bugs
 
