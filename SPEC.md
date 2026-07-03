@@ -22,6 +22,8 @@ check. Replace pricey Datadog synthetics.
 - Reconfigure live. No restart. No dropped/skipped check during reload.
 - TDD. Test first, fail, then code.
 - Clippy `deny` on `unwrap` + `expect`. No panic-on-error in prod paths.
+- `cargo-deny` in CI: vet dependency licenses (allow-list only, no toxic
+  copyleft), security advisories, source provenance.
 - Structured logging via `tracing`. Machine-parseable events, no free-form
   printf. Spans across check lifecycle.
 - Minimal mem + CPU footprint. Small idle cost, flat mem under many
@@ -107,12 +109,15 @@ check. Replace pricey Datadog synthetics.
   any sink or log. Sink/log receive assertion outcomes + low-cardinality
   assertion id (which check failed), never body content. Cost + PII guard.
   Body scans (`body_contains`/`body_not_contains`) use SIMD path (V6).
+- V23 — every dependency license on `cargo-deny` allow-list (permissive
+  only; copyleft/toxic denied by omission). CI fails on unapproved license,
+  RUSTSEC advisory, unknown source, or wildcard dep.
 
 ## §T — tasks
 
 | id | st | task | cites |
 |----|----|------|-------|
-| T1 | x | scaffold cargo workspace, CI, test harness, clippy lint gate | V7,V12 |
+| T1 | x | scaffold cargo workspace, CI, test harness, clippy + cargo-deny gates | V7,V12,V23 |
 | T2 | x | config model + parse (endpoints, intervals, params) | I.config,V1,V11 |
 | T3 | . | `MetricSink` trait + mock/no-op sink for tests | I.sink,V2,V9 |
 | T4 | . | Datadog agent sink (DogStatsD UDP/UDS) | I.ddagent,V2 |

@@ -19,10 +19,10 @@ jobs:
       - name: Install toolchain (pinned by rust-toolchain.toml)
         run: rustup show
 
-      - name: Install cargo-nextest
+      - name: Install cargo-nextest + cargo-deny
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest
+          tool: cargo-nextest,cargo-deny
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -34,6 +34,10 @@ jobs:
       # -D warnings promotes every lint to an error.
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # V23 / ADR 0013: license, advisory, source, and ban policy.
+      - name: Supply-chain (cargo-deny)
+        run: cargo deny check
 
       - name: Test
         run: cargo nextest run --profile ci --all-features

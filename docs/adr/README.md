@@ -20,3 +20,4 @@ Format: [MADR](https://adr.github.io/madr/)-lite.
 | [0010](0010-tdd-and-benchmarks.md) | TDD workflow + criterion benchmarks | Accepted |
 | [0011](0011-fault-isolation.md) | Fault isolation between targets (timeouts, no starvation, panic isolation) | Accepted |
 | [0012](0012-content-assertions-in-daemon.md) | Content assertions in-daemon; bodies never leave the process | Accepted |
+| [0013](0013-supply-chain-cargo-deny.md) | Supply-chain gating with cargo-deny (licenses, advisories, sources) | Accepted |
