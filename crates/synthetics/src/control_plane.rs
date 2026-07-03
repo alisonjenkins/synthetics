@@ -102,7 +102,7 @@ impl ControlPlaneConfigSource {
         }
     }
 
-    /// Override the per-request timeout (default [`DEFAULT_REQUEST_TIMEOUT`]).
+    /// Override the per-request timeout (default 10s).
     /// Builder-style so existing call sites are unaffected.
     #[must_use]
     pub fn with_request_timeout(mut self, timeout: Duration) -> Self {

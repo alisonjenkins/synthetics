@@ -43,7 +43,11 @@ async fn retries_a_failing_check_with_backoff() {
     let start = Instant::now();
     let report = run_endpoint(&ep, &NetPolicy::unrestricted()).await;
 
-    assert_eq!(report.outcome, Outcome::Failure, "refused port stays failed");
+    assert_eq!(
+        report.outcome,
+        Outcome::Failure,
+        "refused port stays failed"
+    );
     // Two retries at 75ms each means the whole thing took at least ~150ms — proof
     // the retries (and their backoff) actually happened.
     assert!(

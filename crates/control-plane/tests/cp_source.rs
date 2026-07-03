@@ -147,8 +147,8 @@ async fn fresh_worker_starts_from_disk_cache_during_cp_outage() {
 
     // Worker B is brand new (empty in-memory cache) and the CP is unreachable.
     // It must still start by reading the on-disk cache.
-    let source_b = ControlPlaneConfigSource::new(base, "w1", "w1", "eu-west")
-        .with_cache_path(cache.clone());
+    let source_b =
+        ControlPlaneConfigSource::new(base, "w1", "w1", "eu-west").with_cache_path(cache.clone());
     let cold = source_b
         .load()
         .await
@@ -231,7 +231,10 @@ async fn skips_checks_pull_when_version_is_unchanged() {
     assert_eq!(first.endpoints[0].id, "a");
 
     let second = source.load().await.expect("second load");
-    assert_eq!(second.endpoints[0].id, "a", "stale-but-unchanged config kept");
+    assert_eq!(
+        second.endpoints[0].id, "a",
+        "stale-but-unchanged config kept"
+    );
     assert_eq!(
         count.0.load(Ordering::SeqCst),
         1,

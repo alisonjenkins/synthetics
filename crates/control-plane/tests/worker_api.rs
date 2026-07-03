@@ -131,7 +131,10 @@ async fn checks_cache_invalidates_on_write() {
         })
         .await
         .unwrap();
-    let app = worker_router(AppState::new(Arc::clone(&store), Arc::new(AcceptWorkerAuth)));
+    let app = worker_router(AppState::new(
+        Arc::clone(&store),
+        Arc::new(AcceptWorkerAuth),
+    ));
 
     // First poll: no endpoints — this populates the version-keyed cache.
     let (_, body) = send(&app, get("/checks", Some("w1"))).await;
