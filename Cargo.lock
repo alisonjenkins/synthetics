@@ -2994,6 +2994,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "subtle",
  "synthetics",
  "testcontainers",
  "testcontainers-modules",

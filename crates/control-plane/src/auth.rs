@@ -6,8 +6,9 @@
 //! verifier is a separate, isolated impl (deferred). [`StaticTokenAuth`] is a
 //! simple token→product map — enough for tests and small single-team setups.
 
-use std::collections::HashMap;
 use std::future::Future;
+
+use subtle::ConstantTimeEq;
 
 /// An authenticated writer and the product it may mutate.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,33 +37,43 @@ pub trait WriterAuth: Send + Sync {
     ) -> impl Future<Output = Result<WriterIdentity, AuthError>> + Send;
 }
 
-/// A [`WriterAuth`] backed by a static token→product map.
+/// A [`WriterAuth`] backed by a static list of token→product pairs.
 #[derive(Debug, Default, Clone)]
 pub struct StaticTokenAuth {
-    tokens: HashMap<String, String>,
+    tokens: Vec<(String, String)>,
 }
 
 impl StaticTokenAuth {
-    /// Create an empty map.
+    /// Create an empty set.
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Register `token` as authorized to write under `product`.
     pub fn with(mut self, token: &str, product: &str) -> Self {
-        self.tokens.insert(token.to_string(), product.to_string());
+        self.tokens.push((token.to_string(), product.to_string()));
         self
     }
 }
 
 impl WriterAuth for StaticTokenAuth {
     async fn authenticate(&self, token: &str) -> Result<WriterIdentity, AuthError> {
-        match self.tokens.get(token) {
+        // Compare the presented token against every registered token with a
+        // constant-time equality, iterating all entries with no early exit, so
+        // the response time does not reveal how much of a guessed token matched
+        // or which entry it hit (#15).
+        let mut matched: Option<&str> = None;
+        for (candidate, product) in &self.tokens {
+            if candidate.as_bytes().ct_eq(token.as_bytes()).into() {
+                matched = Some(product);
+            }
+        }
+        match matched {
             // Fail closed on an empty product (e.g. a misconfigured `token:`
             // mapping): an empty product would match any id with an empty first
             // path segment (`/foo`), so it must never authorize anything (#12).
             Some(product) if !product.is_empty() => Ok(WriterIdentity {
-                product: product.clone(),
+                product: product.to_string(),
             }),
             _ => Err(AuthError::Invalid),
         }

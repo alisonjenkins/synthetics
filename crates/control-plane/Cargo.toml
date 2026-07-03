@@ -16,6 +16,7 @@ name = "synthetics-cp"
 path = "src/main.rs"
 
 [dependencies]
+subtle = "2.6.1"
 synthetics = { path = "../synthetics" }
 humantime-serde = "1.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
