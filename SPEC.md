@@ -233,7 +233,7 @@ check. Replace pricey Datadog synthetics.
 | T11 | . | WebSocket check (future) | I.ws,V1,V9,V35,V36 |
 | T16 | x | refactor `MetricSink` to static dispatch (RPITIT+Send, drop async_trait; enum-dispatch deferred to 2nd backend per V36) | V35,V36 |
 | T17 | x | endpoint→CheckReport orchestrator (match Target, run executor, apply assertions, build report; no trait per V36) | V9,V18,V35,V36 |
-| T18 | ~ | `ConfigSource` trait + FileConfigSource (wraps T2) + scheduler/reload consume it | I.configsource,V24,V35 |
+| T18 | x | `ConfigSource` trait + FileConfigSource (wraps T2) + scheduler/reload consume it | I.configsource,V24,V35 |
 | T19 | x | rendezvous-hash ownership + worker identity + region/location match | V26,V27,V32,V33 |
 | T20 | x | worker heartbeat client + membership consumption | I.membership,V26 |
 | T21 | x | ControlPlaneConfigSource: CP client + change-feed + local cache + outage survival | I.cp,I.configsource,V28,V29,V24 |
