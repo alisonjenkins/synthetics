@@ -7,3 +7,4 @@
 //! executors stay focused on "do the request, measure it, report what happened".
 
 pub mod http;
+pub mod tcp;

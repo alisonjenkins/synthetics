@@ -214,7 +214,7 @@ check. Replace pricey Datadog synthetics.
 | T3 | x | `MetricSink` trait + mock/no-op sink for tests | I.sink,V2,V9 |
 | T4 | x | Datadog agent sink (DogStatsD UDP/UDS) | I.ddagent,V2 |
 | T5 | x | HTTP check executor + per-fn error enum + full DD-parity timings + timeouts | I.http,V1,V9,V10,V17,V19,V35,V36 |
-| T6 | . | TCP check executor + per-fn error enum + connect timing + timeout | I.tcp,V1,V9,V10,V17,V19,V35,V36 |
+| T6 | x | TCP check executor + per-fn error enum + connect timing + timeout | I.tcp,V1,V9,V10,V17,V19,V35,V36 |
 | T7 | . | scheduler: per-endpoint interval, bounded concurrency, fault isolation | V5,V8,V20,V21 |
 | T15 | . | fault-isolation harness: timeout, panic catch, no-starvation test | V19,V20,V21 |
 | T8 | . | hot reload: watch/signal, diff config, no missed check | I.config,I.ctl,V3,V4,V11 |
