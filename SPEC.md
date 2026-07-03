@@ -61,6 +61,9 @@ check. Replace pricey Datadog synthetics.
 - Deployable to Kubernetes via a Helm chart (worker fleet + control plane).
   Local dev/test on a KIND cluster; CloudNativePG operator provisions the
   Postgres store for local testing. IaC-first.
+- Local testing uses a mock Datadog (DogStatsD receiver + viewer), never
+  real Datadog. Exercises the real `DogStatsdSink` wire path; captured
+  metrics viewable locally.
 - Rust docs done well: rustdoc on every public item (`missing_docs` lint
   on, `cargo doc` clean), doc examples where useful. Repo `README.md` with
   overview + quickstart + an SVG architecture diagram.
@@ -198,6 +201,9 @@ check. Replace pricey Datadog synthetics.
 - V38 — every public Rust item documented (`missing_docs` lint on; CI
   `-D warnings` enforces; `cargo doc` builds clean). Repo `README.md`
   present with overview, quickstart, and an SVG architecture diagram.
+- V39 — local/test runs never emit to real Datadog. Default local target is
+  the mock Datadog receiver; real Datadog endpoints require explicit
+  non-default config.
 
 ## §T — tasks
 
@@ -231,6 +237,7 @@ check. Replace pricey Datadog synthetics.
 | T26 | . | CP API contract doc (OpenAPI) + validation rules for future TF provider | I.cp,V37 |
 | T27 | . | repo README + SVG architecture diagram + `missing_docs` lint + rustdoc pass | V38 |
 | T28 | . | Helm chart (worker + CP) + KIND local dev + CloudNativePG for DB | I.cp,I.store |
+| T29 | . | mock Datadog (DogStatsD receiver + viewer) for local/test | I.ddagent,V39 |
 
 ## §B — bugs
 
